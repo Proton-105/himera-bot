@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -70,13 +71,29 @@ func (m *Migrator) applyFile(ctx context.Context, path string) error {
 		return fmt.Errorf("read migration %q: %w", path, err)
 	}
 
-	if len(strings.TrimSpace(string(data))) == 0 {
+	statement := strings.TrimSpace(string(data))
+	if len(statement) == 0 {
 		m.log.Printf("migration %s is empty, skipping", filepath.Base(path))
 		return nil
 	}
 
-	if _, err := m.db.ExecContext(ctx, string(data)); err != nil {
-		return fmt.Errorf("execute migration %q: %w", path, err)
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction for migration %q: %w", path, err)
+	}
+
+	if _, execErr := tx.ExecContext(ctx, statement); execErr != nil {
+		if rbErr := tx.Rollback(); rbErr != nil && rbErr != sql.ErrTxDone {
+			log.Printf("rollback error: %v", rbErr)
+		}
+		return fmt.Errorf("execute migration %q: %w", path, execErr)
+	}
+
+	if commitErr := tx.Commit(); commitErr != nil {
+		if rbErr := tx.Rollback(); rbErr != nil && rbErr != sql.ErrTxDone {
+			log.Printf("rollback error: %v", rbErr)
+		}
+		return fmt.Errorf("commit migration %q: %w", path, commitErr)
 	}
 
 	return nil

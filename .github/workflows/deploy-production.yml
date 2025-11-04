@@ -1,44 +1,23 @@
-name: Deploy Production
+name: Deploy to Production
 
 on:
   workflow_dispatch:
 
 jobs:
-  deploy-production:
+  deploy:
+    name: Deploy to Production Environment
     runs-on: ubuntu-latest
-    environment: production
+    environment:
+      name: production
+      url: https://your-production-url.com # Замени на реальный URL
+
     steps:
-      - uses: actions/checkout@v4
-      - name: Log in to registry
-        env:
-          REGISTRY_URL: ${{ secrets.REGISTRY_URL }}
-          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
-          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+      - name: Trigger deployment webhook
         run: |
-          echo "$REGISTRY_PASSWORD" | docker login "$REGISTRY_URL" -u "$REGISTRY_USERNAME" --password-stdin
-      - name: Build Docker image
-        env:
-          REGISTRY_URL: ${{ secrets.REGISTRY_URL }}
-        run: |
-          IMAGE_NAME=himera-bot
-          GIT_SHA=${GITHUB_SHA::7}
-          docker build -t "${REGISTRY_URL}/${IMAGE_NAME}:prod-${GIT_SHA}" -t "${REGISTRY_URL}/${IMAGE_NAME}:prod-latest" .
-      - name: Push Docker image
-        env:
-          REGISTRY_URL: ${{ secrets.REGISTRY_URL }}
-        run: |
-          IMAGE_NAME=himera-bot
-          GIT_SHA=${GITHUB_SHA::7}
-          docker push "${REGISTRY_URL}/${IMAGE_NAME}:prod-${GIT_SHA}"
-          docker push "${REGISTRY_URL}/${IMAGE_NAME}:prod-latest"
-      - name: Trigger production deploy
-        env:
-          PRODUCTION_DEPLOY_WEBHOOK: ${{ secrets.PRODUCTION_DEPLOY_WEBHOOK }}
-          REGISTRY_URL: ${{ secrets.REGISTRY_URL }}
-        run: |
-          IMAGE_NAME=himera-bot
-          GIT_SHA=${GITHUB_SHA::7}
-          curl -X POST \
-            -H "Content-Type: application/json" \
-            -d "{\"image\": \"${REGISTRY_URL}/${IMAGE_NAME}\", \"tag\": \"prod-${GIT_SHA}\"}" \
-            "$PRODUCTION_DEPLOY_WEBHOOK"
+          echo "Starting production deployment..."
+          response=$(curl -s -o /dev/null -w "%{http_code}" -X POST ${{ secrets.PRODUCTION_DEPLOY_WEBHOOK }})
+          if [ "$response" -ne 200 ]; then
+            echo "::error::Production deployment webhook failed with status code $response"
+            exit 1
+          fi
+          echo "Production deployment webhook triggered successfully."
