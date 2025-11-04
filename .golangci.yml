@@ -1,14 +1,56 @@
 run:
-  tests: true
   timeout: 5m
+  tests: true
+
 linters:
   enable:
     - govet
     - gofmt
     - errcheck
     - ineffassign
-    - staticcheck
     - gosec
+    - staticcheck
+    - gosimple
+    - unused
+    - typecheck
+    - revive
+    - stylecheck
+    - prealloc
+    - unconvert
+    - gocritic
+  fast: false
+
+linters-settings:
+  revive:
+    severity: warning
+    rules:
+      - name: blank-imports
+      - name: context-as-argument
+      - name: error-return
+      - name: error-naming
+      - name: exported
+    arguments:
+      - disableStutteringCheck: true
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+  gosec:
+    severity: medium
+    confidence: medium
+  govet:
+    enable-all: true
+    disable:
+      - fieldalignment
+
 issues:
-  max-issues-per-linter: 0
+  exclude-use-default: false
   max-same-issues: 0
+  max-issues-per-linter: 0
+  exclude-dirs:
+    - bin
+    - scripts
+    - migrations
+  exclude-rules:
+    - path: _test.go
+      linters:
+        - gosec

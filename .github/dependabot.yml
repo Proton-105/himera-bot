@@ -1,14 +1,23 @@
 version: 2
 updates:
+  # Enable version updates for Go modules
   - package-ecosystem: "gomod"
-    directory: "/"
+    directory: "/" # Location of go.mod
     schedule:
-      interval: "weekly"
-  - package-ecosystem: "github-actions"
-    directory: "/.github/workflows"
-    schedule:
-      interval: "weekly"
+      interval: "daily"
+    reviewers:
+      - "${{ github.actor }}" # Assign PR to the person who triggered the workflow (or a specific user/team)
+    labels:
+      - "dependencies"
+      - "go"
+
+  # Enable version updates for Docker
   - package-ecosystem: "docker"
-    directory: "/"
+    directory: "/" # Location of Dockerfile
     schedule:
-      interval: "weekly"
+      interval: "daily"
+    reviewers:
+      - "${{ github.actor }}"
+    labels:
+      - "dependencies"
+      - "docker"
