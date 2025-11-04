@@ -1,0 +1,44 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy-production:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to registry
+        env:
+          REGISTRY_URL: ${{ secrets.REGISTRY_URL }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+        run: |
+          echo "$REGISTRY_PASSWORD" | docker login "$REGISTRY_URL" -u "$REGISTRY_USERNAME" --password-stdin
+      - name: Build Docker image
+        env:
+          REGISTRY_URL: ${{ secrets.REGISTRY_URL }}
+        run: |
+          IMAGE_NAME=himera-bot
+          GIT_SHA=${GITHUB_SHA::7}
+          docker build -t "${REGISTRY_URL}/${IMAGE_NAME}:prod-${GIT_SHA}" -t "${REGISTRY_URL}/${IMAGE_NAME}:prod-latest" .
+      - name: Push Docker image
+        env:
+          REGISTRY_URL: ${{ secrets.REGISTRY_URL }}
+        run: |
+          IMAGE_NAME=himera-bot
+          GIT_SHA=${GITHUB_SHA::7}
+          docker push "${REGISTRY_URL}/${IMAGE_NAME}:prod-${GIT_SHA}"
+          docker push "${REGISTRY_URL}/${IMAGE_NAME}:prod-latest"
+      - name: Trigger production deploy
+        env:
+          PRODUCTION_DEPLOY_WEBHOOK: ${{ secrets.PRODUCTION_DEPLOY_WEBHOOK }}
+          REGISTRY_URL: ${{ secrets.REGISTRY_URL }}
+        run: |
+          IMAGE_NAME=himera-bot
+          GIT_SHA=${GITHUB_SHA::7}
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"image\": \"${REGISTRY_URL}/${IMAGE_NAME}\", \"tag\": \"prod-${GIT_SHA}\"}" \
+            "$PRODUCTION_DEPLOY_WEBHOOK"
