@@ -1,14 +1,15 @@
 repos:
-  # - repo: https://github.com/golangci/golangci-lint
-  #   rev: v1.60.1
-  #   hooks:
-  #     - id: golangci-lint
-  #       args: [--timeout=5m]
   - repo: local
     hooks:
+      - id: go-lint
+        name: golangci-lint (in docker)
+        entry: make lint
+        language: system
+        types: [go]
+        pass_filenames: false
       - id: go-fmt
         name: go fmt
-        entry: bash -lc 'gofmt -s -w . && test -z "$(gofmt -l .)"'
+        entry: go fmt ./...
         language: system
         types: [go]
         pass_filenames: false

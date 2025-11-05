@@ -38,10 +38,10 @@ test:
 	@echo "Running tests..."
 	@$(GO) test $(GO_TEST_FLAGS) -coverprofile=coverage.out ./...
 
-## lint: Run golangci-lint
+## lint: Run golangci-lint locally
 lint:
-	@echo "Running linter..."
-	@golangci-lint run ./... --timeout=5m
+	@echo "Running golangci-lint locally..."
+	@golangci-lint run ./...
 
 # ==============================================================================
 # Utility targets
