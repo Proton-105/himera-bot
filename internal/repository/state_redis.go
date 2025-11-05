@@ -1,3 +1,4 @@
+// Package repository implements Redis-backed storage for bot state.
 package repository
 
 import (

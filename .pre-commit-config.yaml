@@ -1,20 +1,21 @@
 repos:
-  # - repo: https://github.com/golangci/golangci-lint
-  #   rev: v1.59.1
-  #   hooks:
-  #     - id: golangci-lint
-  #       args: [--timeout=5m]
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
   - repo: local
     hooks:
       - id: go-fmt
         name: go fmt
-        entry: "bash -lc 'gofmt -s -w . && test -z \"$(gofmt -l .)\"'"
+        entry: gofmt
         language: system
         types: [go]
-        pass_filenames: false
+
       - id: go-vet
         name: go vet
-        entry: go vet ./...
+        entry: go
+        args: ["vet", "./..."]
         language: system
-        types: [go]
         pass_filenames: false

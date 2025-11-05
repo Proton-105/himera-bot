@@ -1,3 +1,4 @@
+// Package ratelimit implements Redis-backed rate limiting primitives.
 package ratelimit
 
 import (

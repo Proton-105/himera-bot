@@ -30,7 +30,8 @@ func main() {
 
 	cfg, v, err := config.Load()
 	if err != nil {
-		log.Fatal("failed to load config", logger.Err(err))
+		log.Error("failed to load config", logger.Err(err))
+		return
 	}
 	log.Info("configuration loaded", slog.String("env", cfg.AppEnv))
 
@@ -38,8 +39,8 @@ func main() {
 	configLog := log.With(slog.String("subsystem", "config_watcher"))
 	v.OnConfigChange(func(event fsnotify.Event) {
 		configLog.Info("configuration change detected", slog.String("event", event.String()))
-		if err := v.Unmarshal(&cfg); err != nil {
-			configLog.Error("failed to reload config", logger.Err(err))
+		if reloadErr := v.Unmarshal(&cfg); reloadErr != nil {
+			configLog.Error("failed to reload config", logger.Err(reloadErr))
 			return
 		}
 		configLog.Info("configuration reloaded", slog.String("config", cfg.String()))
@@ -50,7 +51,8 @@ func main() {
 
 	db, err := sql.Open("postgres", cfg.Database.DSN())
 	if err != nil {
-		log.Fatal("failed to open database", logger.Err(err))
+		log.Error("failed to open database", logger.Err(err))
+		return
 	}
 	defer func() {
 		if cerr := db.Close(); cerr != nil {
@@ -58,8 +60,9 @@ func main() {
 		}
 	}()
 
-	if err := db.PingContext(ctx); err != nil {
-		log.Fatal("failed to ping database", logger.Err(err))
+	if err = db.PingContext(ctx); err != nil {
+		log.Error("failed to ping database", logger.Err(err))
+		return
 	}
 	log.Info("connected to database",
 		slog.String("host", cfg.Database.Host),
@@ -68,7 +71,8 @@ func main() {
 
 	coreRedisClient, err := redisclient.New(ctx, cfg.Redis.ToClientConfig())
 	if err != nil {
-		log.Fatal("failed to connect to redis", logger.Err(err))
+		log.Error("failed to connect to redis", logger.Err(err))
+		return
 	}
 	redisClient := redisclient.NewMetricsClient(coreRedisClient)
 	defer func() {

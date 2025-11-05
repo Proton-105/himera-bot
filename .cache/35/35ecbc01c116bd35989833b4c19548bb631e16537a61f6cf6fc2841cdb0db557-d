@@ -30,4 +30,3 @@ func _cgoCheckPointer(interface{}, interface{})
 //go:linkname _cgoCheckResult runtime.cgoCheckResult
 //go:noescape
 func _cgoCheckResult(interface{})
-

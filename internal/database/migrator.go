@@ -1,3 +1,4 @@
+// Package database provides helpers for managing database migrations.
 package database
 
 import (
@@ -21,6 +22,7 @@ type Migrator struct {
 	log *logger.Logger
 }
 
+// NewMigrator constructs a Migrator that logs through the provided logger instance.
 func NewMigrator(db *sql.DB, log *logger.Logger) *Migrator {
 	return &Migrator{
 		db:  db,
@@ -87,6 +89,7 @@ func (m *Migrator) applyFile(ctx context.Context, baseLog *logger.Logger, path s
 
 	scopedLog.Info("applying migration")
 
+	// #nosec G304: migration paths are controlled by deployment
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("read migration %q: %w", path, err)
