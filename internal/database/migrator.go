@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io/fs"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -28,6 +28,16 @@ func NewMigrator(db *sql.DB, log *logger.Logger) *Migrator {
 	}
 }
 
+func (m *Migrator) baseLogger() *logger.Logger {
+	if m.log != nil {
+		return m.log
+	}
+
+	l := logger.New()
+	m.log = l
+	return l
+}
+
 // ApplyDir scans dir, finds *.up.sql, sorts them, and executes sequentially.
 func (m *Migrator) ApplyDir(ctx context.Context, dir string) error {
 	entries, err := os.ReadDir(dir)
@@ -47,15 +57,17 @@ func (m *Migrator) ApplyDir(ctx context.Context, dir string) error {
 		}
 	}
 
+	baseLog := m.baseLogger().With(slog.String("dir", dir))
+
 	if len(files) == 0 {
-		m.log.Printf("no .up.sql migrations found in %s", dir)
+		baseLog.Info("no .up.sql migrations found")
 		return nil
 	}
 
 	sort.Strings(files)
 
 	for _, path := range files {
-		if err := m.applyFile(ctx, path); err != nil {
+		if err := m.applyFile(ctx, baseLog, path); err != nil {
 			return err
 		}
 	}
@@ -63,8 +75,17 @@ func (m *Migrator) ApplyDir(ctx context.Context, dir string) error {
 	return nil
 }
 
-func (m *Migrator) applyFile(ctx context.Context, path string) error {
-	m.log.Printf("applying migration: %s", filepath.Base(path))
+func (m *Migrator) applyFile(ctx context.Context, baseLog *logger.Logger, path string) error {
+	scopedLog := baseLog
+	if scopedLog == nil {
+		scopedLog = m.baseLogger()
+	}
+	scopedLog = scopedLog.With(
+		slog.String("file", filepath.Base(path)),
+		slog.String("path", path),
+	)
+
+	scopedLog.Info("applying migration")
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -73,7 +94,7 @@ func (m *Migrator) applyFile(ctx context.Context, path string) error {
 
 	statement := strings.TrimSpace(string(data))
 	if len(statement) == 0 {
-		m.log.Printf("migration %s is empty, skipping", filepath.Base(path))
+		scopedLog.Warn("migration is empty, skipping")
 		return nil
 	}
 
@@ -84,14 +105,14 @@ func (m *Migrator) applyFile(ctx context.Context, path string) error {
 
 	if _, execErr := tx.ExecContext(ctx, statement); execErr != nil {
 		if rbErr := tx.Rollback(); rbErr != nil && rbErr != sql.ErrTxDone {
-			log.Printf("rollback error: %v", rbErr)
+			scopedLog.Error("rollback error", logger.Err(rbErr))
 		}
 		return fmt.Errorf("execute migration %q: %w", path, execErr)
 	}
 
 	if commitErr := tx.Commit(); commitErr != nil {
 		if rbErr := tx.Rollback(); rbErr != nil && rbErr != sql.ErrTxDone {
-			log.Printf("rollback error: %v", rbErr)
+			scopedLog.Error("rollback error", logger.Err(rbErr))
 		}
 		return fmt.Errorf("commit migration %q: %w", path, commitErr)
 	}
@@ -104,7 +125,7 @@ func isUpMigration(name string) bool {
 }
 
 // ListMigrations returns all .up.sql files in dir in lexical order.
-// Удобно для дебага и тестов.
+// Useful for debugging and tests.
 func ListMigrations(dir fs.FS, root string) ([]string, error) {
 	entries, err := fs.ReadDir(dir, root)
 	if err != nil {

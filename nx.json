@@ -1,0 +1,23 @@
+{
+  "installation": {
+    "version": "22.0.2",
+    "plugins": {
+      "@nx/docker": "22.0.2"
+    }
+  },
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "plugins": [
+    {
+      "plugin": "@nx/docker",
+      "options": {
+        "buildTarget": {
+          "name": "docker:build"
+        },
+        "runTarget": {
+          "name": "docker:run"
+        }
+      }
+    }
+  ],
+  "nxCloudId": "690a2ff0ed45877e3023a0fb"
+}
