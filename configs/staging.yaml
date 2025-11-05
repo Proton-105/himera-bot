@@ -1,0 +1,34 @@
+server:
+  port: "8080"
+  metrics_port: "2112"
+  read_timeout: 15s
+  write_timeout: 15s
+
+bot:
+  timeout: 45s
+
+database:
+  host: "db"
+  port: "5432"
+  user: "himera"
+  password: "staging-password"
+  name: "himera"
+  ssl_mode: "disable"
+
+redis:
+  host: "redis"
+  port: "6379"
+  password: ""
+  db: 0
+  pool_size: 150
+  min_idle_conns: 15
+  pool_timeout: 25s
+  idle_timeout: 5m
+  max_retries: 5
+  min_retry_backoff: 16ms
+  max_retry_backoff: 512ms
+
+api:
+  dex_screener_url: "https://api.dexscreener.com/latest"
+  coin_gecko_url: "https://api.coingecko.com/api/v3"
+  timeout: 8s

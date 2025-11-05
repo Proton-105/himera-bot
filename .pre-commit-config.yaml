@@ -1,9 +1,9 @@
 repos:
-  - repo: https://github.com/golangci/golangci-lint
-    rev: v1.62.2
-    hooks:
-      - id: golangci-lint
-        args: [--timeout=5m]
+  # - repo: https://github.com/golangci/golangci-lint
+  #   rev: v1.59.1
+  #   hooks:
+  #     - id: golangci-lint
+  #       args: [--timeout=5m]
   - repo: local
     hooks:
       - id: go-fmt

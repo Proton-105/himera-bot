@@ -2,66 +2,128 @@ package config
 
 import (
 	"fmt"
-	"os"
+	"strings"
+	"time"
+
+	redisclient "github.com/himera-bot/trading-bot/pkg/redis"
 )
 
-// Config holds runtime configuration for the Himera trading bot.
+// Config aggregates application configuration settings.
 type Config struct {
-	Env      string
-	LogLevel string
-	HTTPPort string
-
-	DBHost     string
-	DBPort     string
-	DBUser     string
-	DBPassword string
-	DBName     string
-	DBSSLMode  string
+	AppEnv   string         `mapstructure:"app_env" yaml:"-" validate:"required"`
+	Server   ServerConfig   `mapstructure:"server" yaml:"server" validate:"required"`
+	Bot      BotConfig      `mapstructure:"bot" yaml:"bot" validate:"required"`
+	Database DatabaseConfig `mapstructure:"database" yaml:"database" validate:"required"`
+	Redis    RedisConfig    `mapstructure:"redis" yaml:"redis" validate:"required"`
+	API      APIConfig      `mapstructure:"api" yaml:"api" validate:"required"`
 }
 
-// Load reads configuration from environment variables and applies defaults where needed.
-func Load() *Config {
-	cfg := &Config{
-		Env:      getEnv("APP_ENV", "development"),
-		LogLevel: getEnv("LOG_LEVEL", "info"),
-		HTTPPort: getEnv("HTTP_PORT", "8080"),
-
-		DBHost:     getEnv("DB_HOST", "localhost"),
-		DBPort:     getEnv("DB_PORT", "5432"),
-		DBUser:     getRequiredEnv("DB_USER"),
-		DBPassword: getRequiredEnv("DB_PASSWORD"),
-		DBName:     getRequiredEnv("DB_NAME"),
-		DBSSLMode:  getEnv("DB_SSLMODE", "disable"),
-	}
-
-	return cfg
-}
-
-// GetDBConnectionString returns PostgreSQL DSN based on config values.
-func (c *Config) GetDBConnectionString() string {
+// String returns a masked representation of the configuration.
+func (c Config) String() string {
 	return fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		c.DBHost,
-		c.DBPort,
-		c.DBUser,
-		c.DBPassword,
-		c.DBName,
-		c.DBSSLMode,
+		"Config{AppEnv:%s, Server:%s, Bot:%s, Database:%s, Redis:%s, API:%s}",
+		c.AppEnv,
+		c.Server.String(),
+		c.Bot.String(),
+		c.Database.String(),
+		c.Redis.String(),
+		c.API.String(),
 	)
 }
 
-func getEnv(key, defaultValue string) string {
-	if value, exists := os.LookupEnv(key); exists && value != "" {
-		return value
-	}
-
-	return defaultValue
+// ServerConfig contains HTTP server settings.
+type ServerConfig struct {
+	Port         string        `mapstructure:"port" yaml:"port" validate:"required"`
+	MetricsPort  string        `mapstructure:"metrics_port" yaml:"metrics_port" validate:"required"`
+	ReadTimeout  time.Duration `mapstructure:"read_timeout" yaml:"read_timeout" validate:"required"`
+	WriteTimeout time.Duration `mapstructure:"write_timeout" yaml:"write_timeout" validate:"required"`
 }
 
-func getRequiredEnv(key string) string {
-	if value, exists := os.LookupEnv(key); exists && value != "" {
-		return value
-	}
+func (s ServerConfig) String() string {
+	return fmt.Sprintf("Server{Port:%s, MetricsPort:%s, ReadTimeout:%s, WriteTimeout:%s}", s.Port, s.MetricsPort, s.ReadTimeout, s.WriteTimeout)
+}
 
-	panic(fmt.Sprintf("environment variable %s is required", key))
+// BotConfig contains bot-related settings.
+type BotConfig struct {
+	Token   string        `mapstructure:"token" yaml:"token" validate:"required"`
+	Timeout time.Duration `mapstructure:"timeout" yaml:"timeout" validate:"required"`
+}
+
+func (b BotConfig) String() string {
+	return fmt.Sprintf("Bot{Token:%s, Timeout:%s}", maskSecret(b.Token), b.Timeout)
+}
+
+// DatabaseConfig contains PostgreSQL configuration.
+type DatabaseConfig struct {
+	Host     string `mapstructure:"host" yaml:"host" validate:"required"`
+	Port     string `mapstructure:"port" yaml:"port" validate:"required"`
+	User     string `mapstructure:"user" yaml:"user" validate:"required"`
+	Password string `mapstructure:"password" yaml:"password" validate:"required"`
+	Name     string `mapstructure:"name" yaml:"name" validate:"required"`
+	SSLMode  string `mapstructure:"ssl_mode" yaml:"ssl_mode" validate:"required"`
+}
+
+func (d DatabaseConfig) String() string {
+	return fmt.Sprintf("Database{Host:%s, Port:%s, User:%s, Password:%s, Name:%s, SSLMode:%s}", d.Host, d.Port, d.User, maskSecret(d.Password), d.Name, d.SSLMode)
+}
+
+// DSN returns the formatted Postgres connection string.
+func (d DatabaseConfig) DSN() string {
+	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", d.User, d.Password, d.Host, d.Port, d.Name, d.SSLMode)
+}
+
+// RedisConfig contains Redis connection settings.
+type RedisConfig struct {
+	Host            string        `mapstructure:"host" yaml:"host" validate:"required"`
+	Port            string        `mapstructure:"port" yaml:"port" validate:"required"`
+	Password        string        `mapstructure:"password" yaml:"password"`
+	DB              int           `mapstructure:"db" yaml:"db"`
+	PoolSize        int           `mapstructure:"pool_size" yaml:"pool_size" validate:"required"`
+	MinIdleConns    int           `mapstructure:"min_idle_conns" yaml:"min_idle_conns" validate:"required"`
+	PoolTimeout     time.Duration `mapstructure:"pool_timeout" yaml:"pool_timeout" validate:"required"`
+	IdleTimeout     time.Duration `mapstructure:"idle_timeout" yaml:"idle_timeout" validate:"required"`
+	MaxRetries      int           `mapstructure:"max_retries" yaml:"max_retries" validate:"required"`
+	MinRetryBackoff time.Duration `mapstructure:"min_retry_backoff" yaml:"min_retry_backoff" validate:"required"`
+	MaxRetryBackoff time.Duration `mapstructure:"max_retry_backoff" yaml:"max_retry_backoff" validate:"required"`
+}
+
+func (r RedisConfig) String() string {
+	return fmt.Sprintf("Redis{Host:%s, Port:%s, Password:%s, DB:%d}", r.Host, r.Port, maskSecret(r.Password), r.DB)
+}
+
+// ToClientConfig converts to the redis client configuration.
+func (r RedisConfig) ToClientConfig() redisclient.Config {
+	return redisclient.Config{
+		Addr:            fmt.Sprintf("%s:%s", r.Host, r.Port),
+		Password:        r.Password,
+		DB:              r.DB,
+		PoolSize:        r.PoolSize,
+		MinIdleConns:    r.MinIdleConns,
+		PoolTimeout:     r.PoolTimeout,
+		IdleTimeout:     r.IdleTimeout,
+		MaxRetries:      r.MaxRetries,
+		MinRetryBackoff: r.MinRetryBackoff,
+		MaxRetryBackoff: r.MaxRetryBackoff,
+	}
+}
+
+// APIConfig contains external API endpoints and timeouts.
+type APIConfig struct {
+	DexScreenerURL string        `mapstructure:"dex_screener_url" yaml:"dex_screener_url" validate:"required,url"`
+	CoinGeckoURL   string        `mapstructure:"coin_gecko_url" yaml:"coin_gecko_url" validate:"required,url"`
+	Timeout        time.Duration `mapstructure:"timeout" yaml:"timeout" validate:"required"`
+}
+
+func (a APIConfig) String() string {
+	return fmt.Sprintf("API{DexScreenerURL:%s, CoinGeckoURL:%s, Timeout:%s}", a.DexScreenerURL, a.CoinGeckoURL, a.Timeout)
+}
+
+func maskSecret(value string) string {
+	if value == "" {
+		return ""
+	}
+	if len(value) <= 2 {
+		return strings.Repeat("*", len(value))
+	}
+	return fmt.Sprintf("%s***%s", string(value[0]), string(value[len(value)-1]))
 }
