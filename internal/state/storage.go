@@ -1,3 +1,4 @@
+// Package state manages user state and state machine data for the bot.
 package state
 
 import (

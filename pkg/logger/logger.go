@@ -1,3 +1,4 @@
+// Package logger provides structured logging helpers for the Himera bot.
 package logger
 
 import (
