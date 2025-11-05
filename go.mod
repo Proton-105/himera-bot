@@ -2,11 +2,11 @@ module github.com/himera-bot/trading-bot
 
 go 1.24.0
 
-toolchain go1.24.9
+toolchain go1.24.10
 
 require (
 	github.com/fsnotify/fsnotify v1.9.0
-	github.com/go-playground/validator/v10 v10.28.0
+	github.com/go-playground/validator/v10 v10.19.0
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.10.9
 	github.com/prometheus/client_golang v1.23.2
