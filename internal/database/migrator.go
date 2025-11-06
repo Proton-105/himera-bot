@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/himera-bot/trading-bot/pkg/config"
 	"github.com/himera-bot/trading-bot/pkg/logger"
 )
 
@@ -19,23 +20,29 @@ import (
 // Phase0: only .up.sql is supported.
 type Migrator struct {
 	db  *sql.DB
-	log *logger.Logger
+	log *slog.Logger
 }
 
 // NewMigrator constructs a Migrator that logs through the provided logger instance.
-func NewMigrator(db *sql.DB, log *logger.Logger) *Migrator {
+func NewMigrator(db *sql.DB, log *slog.Logger) *Migrator {
 	return &Migrator{
 		db:  db,
 		log: log,
 	}
 }
 
-func (m *Migrator) baseLogger() *logger.Logger {
+func (m *Migrator) baseLogger() *slog.Logger {
 	if m.log != nil {
 		return m.log
 	}
 
-	l := logger.New()
+	cfg := config.Config{
+		AppEnv: "migrator",
+		Logger: config.LoggerConfig{Level: "info", Format: "text"},
+		Sentry: config.SentryConfig{Enabled: false},
+	}
+
+	l := logger.New(cfg)
 	m.log = l
 	return l
 }
@@ -77,7 +84,7 @@ func (m *Migrator) ApplyDir(ctx context.Context, dir string) error {
 	return nil
 }
 
-func (m *Migrator) applyFile(ctx context.Context, baseLog *logger.Logger, path string) error {
+func (m *Migrator) applyFile(ctx context.Context, baseLog *slog.Logger, path string) error {
 	scopedLog := baseLog
 	if scopedLog == nil {
 		scopedLog = m.baseLogger()
@@ -108,14 +115,15 @@ func (m *Migrator) applyFile(ctx context.Context, baseLog *logger.Logger, path s
 
 	if _, execErr := tx.ExecContext(ctx, statement); execErr != nil {
 		if rbErr := tx.Rollback(); rbErr != nil && rbErr != sql.ErrTxDone {
-			scopedLog.Error("rollback error", logger.Err(rbErr))
+			scopedLog.Error("rollback error", "error", rbErr)
 		}
 		return fmt.Errorf("execute migration %q: %w", path, execErr)
 	}
 
 	if commitErr := tx.Commit(); commitErr != nil {
+		// Attempt to rollback on commit failure, though it's often too late.
 		if rbErr := tx.Rollback(); rbErr != nil && rbErr != sql.ErrTxDone {
-			scopedLog.Error("rollback error", logger.Err(rbErr))
+			scopedLog.Error("rollback error after commit failure", "error", rbErr)
 		}
 		return fmt.Errorf("commit migration %q: %w", path, commitErr)
 	}

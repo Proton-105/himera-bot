@@ -16,18 +16,22 @@ type Config struct {
 	Database DatabaseConfig `mapstructure:"database" yaml:"database" validate:"required"`
 	Redis    RedisConfig    `mapstructure:"redis" yaml:"redis" validate:"required"`
 	API      APIConfig      `mapstructure:"api" yaml:"api" validate:"required"`
+	Logger   LoggerConfig   `mapstructure:"logging" yaml:"logging" validate:"required"`
+	Sentry   SentryConfig   `mapstructure:"sentry" yaml:"sentry" validate:"required"`
 }
 
 // String returns a masked representation of the configuration.
 func (c Config) String() string {
 	return fmt.Sprintf(
-		"Config{AppEnv:%s, Server:%s, Bot:%s, Database:%s, Redis:%s, API:%s}",
+		"Config{AppEnv:%s, Server:%s, Bot:%s, Database:%s, Redis:%s, API:%s, Logger:%s, Sentry:%s}",
 		c.AppEnv,
 		c.Server.String(),
 		c.Bot.String(),
 		c.Database.String(),
 		c.Redis.String(),
 		c.API.String(),
+		c.Logger.String(),
+		fmt.Sprintf("Sentry{DSN:%s, Enabled:%t}", maskSecret(c.Sentry.DSN), c.Sentry.Enabled),
 	)
 }
 
@@ -116,6 +120,22 @@ type APIConfig struct {
 
 func (a APIConfig) String() string {
 	return fmt.Sprintf("API{DexScreenerURL:%s, CoinGeckoURL:%s, Timeout:%s}", a.DexScreenerURL, a.CoinGeckoURL, a.Timeout)
+}
+
+// LoggerConfig contains logging settings.
+type LoggerConfig struct {
+	Level  string `mapstructure:"level" yaml:"level" validate:"required"`
+	Format string `mapstructure:"format" yaml:"format" validate:"required"`
+}
+
+func (l LoggerConfig) String() string {
+	return fmt.Sprintf("Logger{Level:%s, Format:%s}", l.Level, l.Format)
+}
+
+// SentryConfig holds Sentry integration settings.
+type SentryConfig struct {
+	DSN     string `mapstructure:"dsn" yaml:"dsn"`
+	Enabled bool   `mapstructure:"enabled" yaml:"enabled"`
 }
 
 func maskSecret(value string) string {

@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/getsentry/sentry-go"
+	"github.com/himera-bot/trading-bot/internal/middleware"
 	"github.com/himera-bot/trading-bot/internal/ratelimit"
 	"github.com/himera-bot/trading-bot/internal/repository"
 	"github.com/himera-bot/trading-bot/pkg/config"
@@ -24,23 +26,33 @@ import (
 )
 
 func main() {
-	log := logger.New().With(slog.String("component", "bootstrap"))
+	bootstrapCfg := config.Config{
+		AppEnv: "bootstrap",
+		Logger: config.LoggerConfig{Level: "info", Format: "text"},
+		Sentry: config.SentryConfig{Enabled: false},
+	}
+	bootstrapLog := logger.New(bootstrapCfg).With(slog.String("component", "bootstrap"))
 
-	log.Info("loading configuration")
+	bootstrapLog.Info("loading configuration")
 
 	cfg, v, err := config.Load()
 	if err != nil {
-		log.Error("failed to load config", logger.Err(err))
+		bootstrapLog.Error("failed to load config", "error", err)
 		return
 	}
+
+	log := logger.New(*cfg).With(slog.String("component", "bootstrap"))
+	log.Info("starting chimera bot", slog.String("config", cfg.String()))
 	log.Info("configuration loaded", slog.String("env", cfg.AppEnv))
+
+	loggingMiddleware := middleware.New(log)
 
 	v.WatchConfig()
 	configLog := log.With(slog.String("subsystem", "config_watcher"))
 	v.OnConfigChange(func(event fsnotify.Event) {
 		configLog.Info("configuration change detected", slog.String("event", event.String()))
 		if reloadErr := v.Unmarshal(&cfg); reloadErr != nil {
-			configLog.Error("failed to reload config", logger.Err(reloadErr))
+			configLog.Error("failed to reload config", "error", reloadErr)
 			return
 		}
 		configLog.Info("configuration reloaded", slog.String("config", cfg.String()))
@@ -51,17 +63,17 @@ func main() {
 
 	db, err := sql.Open("postgres", cfg.Database.DSN())
 	if err != nil {
-		log.Error("failed to open database", logger.Err(err))
+		log.Error("failed to open database", "error", err)
 		return
 	}
 	defer func() {
 		if cerr := db.Close(); cerr != nil {
-			log.Error("error closing database connection", logger.Err(cerr))
+			log.Error("error closing database connection", "error", cerr)
 		}
 	}()
 
 	if err = db.PingContext(ctx); err != nil {
-		log.Error("failed to ping database", logger.Err(err))
+		log.Error("failed to ping database", "error", err)
 		return
 	}
 	log.Info("connected to database",
@@ -71,13 +83,13 @@ func main() {
 
 	coreRedisClient, err := redisclient.New(ctx, cfg.Redis.ToClientConfig())
 	if err != nil {
-		log.Error("failed to connect to redis", logger.Err(err))
+		log.Error("failed to connect to redis", "error", err)
 		return
 	}
 	redisClient := redisclient.NewMetricsClient(coreRedisClient)
 	defer func() {
 		if cerr := redisClient.Close(); cerr != nil {
-			log.Error("error closing redis client", logger.Err(cerr))
+			log.Error("error closing redis client", "error", cerr)
 		}
 	}()
 	log.Info("connected to redis",
@@ -93,23 +105,23 @@ func main() {
 
 	log.Info("performing test redis operations for metrics")
 	if err := redisClient.Set(ctx, "test_key", "test_value", 10*time.Second); err != nil {
-		log.Error("redis set error", logger.Err(err), slog.String("key", "test_key"))
+		log.Error("redis set error", "error", err, slog.String("key", "test_key"))
 	}
 	if _, err := redisClient.Get(ctx, "test_key"); err != nil {
-		log.Error("redis get error", logger.Err(err), slog.String("key", "test_key"))
+		log.Error("redis get error", "error", err, slog.String("key", "test_key"))
 	}
 	if _, err := redisClient.Get(ctx, "non_existent_key"); err != nil {
-		log.Warn("redis get miss", logger.Err(err), slog.String("key", "non_existent_key"))
+		log.Warn("redis get miss", "error", err, slog.String("key", "non_existent_key"))
 	}
 	if err := redisClient.Delete(ctx, "test_key"); err != nil {
-		log.Error("redis delete error", logger.Err(err), slog.String("key", "test_key"))
+		log.Error("redis delete error", "error", err, slog.String("key", "test_key"))
 	}
 
 	metricsLog := log.With(slog.String("subsystem", "metrics_http"))
 
 	go func() {
 		mux := http.NewServeMux()
-		mux.Handle("/metrics", promhttp.Handler())
+		mux.Handle("/metrics", logger.Middleware(loggingMiddleware(promhttp.Handler())))
 
 		server := &http.Server{
 			Addr:    fmt.Sprintf(":%s", cfg.Server.MetricsPort),
@@ -121,13 +133,13 @@ func main() {
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			if err := server.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				metricsLog.Error("metrics server shutdown error", logger.Err(err))
+				metricsLog.Error("metrics server shutdown error", "error", err)
 			}
 		}()
 
 		metricsLog.Info("metrics server listening", slog.String("port", cfg.Server.MetricsPort))
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			metricsLog.Error("metrics server error", logger.Err(err))
+			metricsLog.Error("metrics server error", "error", err)
 		}
 	}()
 
@@ -135,5 +147,7 @@ func main() {
 
 	<-ctx.Done()
 
-	log.Info("shutdown signal received", logger.Err(ctx.Err()))
+	sentry.Flush(2 * time.Second)
+
+	log.Info("shutdown signal received", "error", ctx.Err())
 }

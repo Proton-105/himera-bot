@@ -1,100 +1,131 @@
-// Package logger provides structured logging helpers for the Himera bot.
 package logger
 
 import (
+	"context"
+	"io"
 	"log/slog"
 	"os"
+
+	"github.com/getsentry/sentry-go"
+	"github.com/himera-bot/trading-bot/pkg/config"
+	slogsentry "github.com/samber/slog-sentry/v2"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-// Logger wraps slog.Logger providing Himera-specific defaults and helpers.
-type Logger struct {
-	*slog.Logger
+// New constructs a slog.Logger configured according to the provided application configuration.
+func New(cfg config.Config) *slog.Logger {
+	level := resolveLevel(cfg.Logger.Level)
+
+	logWriter := resolveWriter(cfg.Logger.Format)
+
+	handlerOpts := &slog.HandlerOptions{Level: level}
+
+	var baseHandler slog.Handler
+	if cfg.Logger.Format == "json" {
+		baseHandler = slog.NewJSONHandler(logWriter, handlerOpts)
+	} else {
+		baseHandler = slog.NewTextHandler(logWriter, handlerOpts)
+	}
+
+	maskingHandler := NewMaskingHandler(baseHandler)
+
+	handlers := []slog.Handler{maskingHandler}
+
+	if cfg.Sentry.Enabled {
+		if err := sentry.Init(sentry.ClientOptions{
+			Dsn:         cfg.Sentry.DSN,
+			Environment: cfg.AppEnv,
+		}); err != nil {
+			slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})).Error(
+				"failed to initialize sentry",
+				slog.String("error", err.Error()),
+			)
+		} else {
+			handlers = append(handlers, slogsentry.Option{Level: slog.LevelError}.NewSentryHandler())
+		}
+	}
+
+	var handler slog.Handler
+	if len(handlers) == 1 {
+		handler = handlers[0]
+	} else {
+		handler = newMultiHandler(handlers...)
+	}
+
+	return slog.New(handler)
 }
 
-type options struct {
-	level     slog.Leveler
-	handler   slog.Handler
-	addSource bool
-}
-
-// Option configures logger creation.
-type Option func(*options)
-
-// WithLevel overrides the default logging level.
-func WithLevel(level slog.Leveler) Option {
-	return func(o *options) {
-		o.level = level
+func resolveLevel(level string) slog.Level {
+	switch level {
+	case "debug":
+		return slog.LevelDebug
+	case "info":
+		return slog.LevelInfo
+	case "warn":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
 	}
 }
 
-// WithHandler allows supplying a fully custom slog handler.
-func WithHandler(handler slog.Handler) Option {
-	return func(o *options) {
-		o.handler = handler
+func resolveWriter(format string) io.Writer {
+	if format == "json" {
+		return &lumberjack.Logger{
+			Filename:   "storage/logs/chimera.log",
+			MaxSize:    10,
+			MaxBackups: 3,
+			MaxAge:     7,
+			Compress:   true,
+		}
 	}
+
+	return os.Stdout
 }
 
-// WithSource toggles source reporting on log lines.
-func WithSource(addSource bool) Option {
-	return func(o *options) {
-		o.addSource = addSource
-	}
+type multiHandler struct {
+	handlers []slog.Handler
 }
 
-// New constructs a structured logger with JSON output, info level, and source data by default.
-func New(opts ...Option) *Logger {
-	cfg := options{
-		level:     slog.LevelInfo,
-		addSource: true,
-	}
-
-	for _, opt := range opts {
-		opt(&cfg)
-	}
-
-	handler := cfg.handler
-	if handler == nil {
-		handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-			Level:     cfg.level,
-			AddSource: cfg.addSource,
-		})
-	}
-
-	return &Logger{
-		Logger: slog.New(handler),
-	}
+func newMultiHandler(handlers ...slog.Handler) slog.Handler {
+	return &multiHandler{handlers: handlers}
 }
 
-// With adds structured context to the logger and returns a derived instance.
-func (l *Logger) With(args ...any) *Logger {
-	if l == nil {
-		return nil
+func (h *multiHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	for _, handler := range h.handlers {
+		if handler.Enabled(ctx, level) {
+			return true
+		}
 	}
 
-	return &Logger{Logger: l.Logger.With(args...)}
+	return false
 }
 
-// WithGroup nests subsequent attributes under the provided group name.
-func (l *Logger) WithGroup(name string) *Logger {
-	if l == nil {
-		return nil
+func (h *multiHandler) Handle(ctx context.Context, record slog.Record) error {
+	for _, handler := range h.handlers {
+		if err := handler.Handle(ctx, record.Clone()); err != nil {
+			return err
+		}
 	}
 
-	return &Logger{Logger: l.Logger.WithGroup(name)}
+	return nil
 }
 
-// Fatal logs the message at error level and terminates the process.
-func (l *Logger) Fatal(msg string, args ...any) {
-	if l == nil {
-		os.Exit(1)
-		return
+func (h *multiHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	nextHandlers := make([]slog.Handler, 0, len(h.handlers))
+	for _, handler := range h.handlers {
+		nextHandlers = append(nextHandlers, handler.WithAttrs(attrs))
 	}
 
-	l.Logger.Error(msg, args...)
-	os.Exit(1)
+	return &multiHandler{handlers: nextHandlers}
 }
 
-// Err builds a consistent error attribute for structured logging.
-func Err(err error) slog.Attr {
-	return slog.Any("error", err)
+func (h *multiHandler) WithGroup(name string) slog.Handler {
+	nextHandlers := make([]slog.Handler, 0, len(h.handlers))
+	for _, handler := range h.handlers {
+		nextHandlers = append(nextHandlers, handler.WithGroup(name))
+	}
+
+	return &multiHandler{handlers: nextHandlers}
 }

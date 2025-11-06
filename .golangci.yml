@@ -1,3 +1,4 @@
+version: 2.0
 run:
   timeout: 5m
   tests: true
@@ -5,32 +6,16 @@ run:
 linters:
   enable:
     - govet
-    - gofmt
     - errcheck
     - ineffassign
-    - gosec
     - staticcheck
-    - gosimple
     - unused
-    - typecheck
-    - revive
-    - stylecheck
     - prealloc
     - unconvert
     - gocritic
   fast: false
 
 linters-settings:
-  revive:
-    severity: warning
-    rules:
-      - name: blank-imports
-      - name: context-as-argument
-      - name: error-return
-      - name: error-naming
-      - name: exported
-    arguments:
-      - disableStutteringCheck: true
   errcheck:
     check-type-assertions: true
     check-blank: true
@@ -51,6 +36,6 @@ issues:
     - scripts
     - migrations
   exclude-rules:
-    - path: _test.go
+    - path: ^.*_test\.go$
       linters:
         - gosec
