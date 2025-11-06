@@ -23,3 +23,4 @@ docker-data/
 .github/instructions/nx.instructions.md
 .cache/
 bot
+.cache/
