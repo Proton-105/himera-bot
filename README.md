@@ -1,178 +1,167 @@
-# Himera Trading Bot (Base L2) — Phase 0
+# Himera Trading Bot
 
-Этот репозиторий — бэкенд Himera (trading bot для сети Base) в состоянии Phase 0:
-каркас приложения, docker-окружение и минимальная схема БД под прототип.
+Himera — это бэкенд для трейдингового бота с Telegram-интерфейсом. Приложение агрегирует рыночные данные, управляет пользовательскими состояниями, хранит данные в PostgreSQL/Redis, публикует метрики Prometheus (`/metrics`) и health-check (`/health`) для мониторинга.
 
-## 1. Стек и структура
+## Architecture overview
 
-Язык: Go 1.22+
-БД: PostgreSQL 15
-Кэш: Redis 7
-Контейнеры: Docker + docker compose
+В проекте используется слоистая архитектура с чётким разделением ответственности.
 
-Основные директории:
+```
+                ┌────────────────┐
+                │    cmd/bot     │  ← точка входа, сборка зависимостей
+                └───────┬────────┘
+                        │
+              ┌─────────▼─────────┐
+              │  internal/service  │  ← бизнес-логика, use-cases
+              └─────────┬─────────┘
+                        │
+           ┌────────────▼────────────┐
+           │    internal/domain      │  ← доменные сущности
+           └────────────┬────────────┘
+                        │
+      ┌─────────────────▼─────────────────┐
+      │        internal/repository        │  ← доступ к Postgres и Redis
+      └───────────────┬───────────────────┘
+                      │
+        ┌─────────────▼─────────────┐
+        │     internal/handler      │  ← Telegram/HTTP обработчики
+        └─────────────┬─────────────┘
+                      │
+        ┌─────────────▼─────────────┐
+        │      internal/state       │  ← FSM, фоновые задачи
+        └─────────────┬─────────────┘
+                      │
+       ┌──────────────▼──────────────┐
+       │ pkg/config │ pkg/logger │ pkg/redis │ … инфраструктура
+       └─────────────────────────────┘
+```
 
-- cmd/bot — входная точка приложения.
-- internal/domain — доменные сущности (пока пусто).
-- internal/service — use-cases (пока пусто).
-- internal/repository — доступ к БД и кэшу (пока пусто).
-- internal/handler — транспорты (Telegram, HTTP и т.п., пока пусто).
-- internal/state — стейт-машина, фоновые джобы (пока пусто).
-- internal/database — простой мигратор SQL-файлов.
-- pkg/config — загрузка конфигурации из переменных окружения.
-- pkg/logger — обёртка над log.Logger с префиксом [himera].
-- migrations — SQL-миграции.
-- scripts — служебные скрипты (init-db.sql, wait-for-it.sh, reset-db.sh).
+- `cmd/bot` — главный бинарь, собирает конфиг, инициализирует логгер, базы и Telegram-бота.
+- `internal/domain` — доменные сущности (пользователь, состояния, трейды).
+- `internal/service` — бизнес-логика и use cases.
+- `internal/repository` — работа с PostgreSQL/Redis.
+- `internal/handler` — обработчики транспортов (Telegram, HTTP).
+- `internal/state` — FSM, фоновые задания, планировщики.
+- `pkg/config`, `pkg/logger`, `pkg/redis` — инфраструктурные утилиты и адаптеры.
 
-## 2. Локальная разработка
+## Tech stack
 
-Требования:
+- Go 1.24 (см. `go.mod`)
+- PostgreSQL 15 (через `docker-compose`)
+- Redis 7 (через `docker-compose`)
+- Docker + docker-compose
+- Telebot v3 (`gopkg.in/telebot.v3`)
+- Prometheus `client_golang` для метрик
+- Sentry SDK (`github.com/getsentry/sentry-go`)
 
-- Go 1.22+
-- golangci-lint (через go install)
-- pre-commit (через pip)
+## Prerequisites
 
-Базовые команды:
+- Go 1.24.x (`go env GOROOT` должен указывать на актуальную версию)
+- Docker и docker-compose
+- git
+- Telegram Bot Token (передаётся через конфиг/переменные окружения)
 
-- make build — собрать бинарь bin/himera-bot.
-- make run — запустить бота локально.
-- make test — запустить go test ./...
-- make lint — запустить golangci-lint run ./...
-- pre-commit run --all-files — прогнать хуки локально.
+## Setup & Run
 
-## 3. Конфиг и переменные окружения
+1. **Клонируйте репозиторий**
+   ```bash
+   git clone https://github.com/Proton-105/himera-bot.git
+   cd trading-bot
+   ```
 
-Шаблон окружения:
+2. **Настройте конфигурацию**
+   - Базовая конфигурация находится в `configs/config.yaml`.
+   - Для переопределения значений используйте переменные окружения или дополнительные YAML-файлы (например, `configs/development.yaml`).
+   - Ключевые параметры:
+     - `server.port` — HTTP-порт основного сервера (обработчики, вебхуки).
+     - `server.metrics_port` — порт для `/metrics` и `/health`.
+     - `bot.token` — Telegram Bot Token (можно задать через YAML или переменную `BOT_TOKEN`).
+     - `bot.mode` — `polling` или `webhook`.
+     - `bot.webhook_url` — URL вебхука (для режима `webhook`).
+     - `database.*` — параметры подключения к Postgres.
+     - `redis.*` — параметры подключения к Redis.
 
-- файл .env.example в корне репозитория.
+   Таблица параметров:
 
-Создание локального файла:
+   | Секция  | Ключ         | Описание                                | Значение по умолчанию |
+   |---------|--------------|-----------------------------------------|-----------------------|
+   | server  | port         | Основной HTTP-порт приложения           | `8080`                |
+   | server  | metrics_port | Порт метрик и health-check              | `2112`                |
+   | bot     | token        | Telegram Bot Token                      | `""`                  |
+   | bot     | mode         | `polling` или `webhook`                 | `"polling"`           |
+   | bot     | webhook_url  | URL для Telegram webhook                | `""`                  |
+   | bot     | timeout      | Таймаут long polling                    | `120s`                |
+   | database| host         | Хост PostgreSQL                         | `localhost`           |
+   | database| port         | Порт PostgreSQL                         | `5434`                |
+   | database| user         | Имя пользователя                        | `himera`              |
+   | database| password     | Пароль                                  | `himera`              |
+   | database| name         | Имя базы                                | `himera`              |
+   | database| ssl_mode     | Режим SSL (`disable`, `require`, …)     | `disable`             |
+   | redis   | host         | Хост Redis                              | `localhost`           |
+   | redis   | port         | Порт Redis                              | `6380`                |
+   | redis   | db           | Номер базы                              | `0`                   |
+   | redis   | password     | Пароль                                  | `""`                  |
 
-- cp .env.example .env
+3. **Поднимите инфраструктуру**
+   ```bash
+   docker compose up -d
+   ```
+   Это создаст контейнеры PostgreSQL и Redis, определённые в `docker-compose.yml`.
 
-Основные переменные:
+4. **Запустите приложение**
+   - Через Makefile:
+     ```bash
+     make run
+     ```
+   - Либо напрямую:
+     ```bash
+     go run ./cmd/bot
+     ```
 
-- APP_ENV — окружение (development, staging, production).
-- HTTP_PORT — порт HTTP-сервера бота.
-- LOG_LEVEL — уровень логов.
-- DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, DB_SSLMODE — настройки PostgreSQL.
-- REDIS_ADDR, REDIS_DB — параметры Redis.
+   При успешном старте:
+   - Получится лог о запуске Telegram-бота.
+   - `/metrics` и `/health` будут доступны на `http://localhost:<metrics_port>/`.
 
-## 4. Docker и docker compose
+## Health & Metrics
 
-Запуск стека (бот + Postgres + Redis):
+- **/health** — HTTP endpoint, проверяет:
+  - доступность PostgreSQL (`db.PingContext`);
+  - ответ Redis (`PING`);
+  - инициализацию Telegram Bot API.
+  Возвращает JSON со статусами по компонентам. Если хотя бы одна проверка не `OK`, возвращается `503 Service Unavailable`.
 
-1. Скопировать env:
+- **/metrics** — Prometheus endpoint (`promhttp.Handler()`), отдаёт стандартные и кастомные метрики:
+  - Redis-клиент (latency, ошибки);
+  - HTTP-метрики (`promhttp`);
+  - пользовательские метрики (по мере добавления функционала).
 
-- cp .env.example .env
+## Testing
 
-2. Поднять контейнеры:
+| Команда                     | Назначение                                               |
+|----------------------------|-----------------------------------------------------------|
+| `go test ./...`            | Юнит-тесты приложения                                     |
+| `golangci-lint run ./...`  | Статический анализ кода и линтинг                         |
+| `pre-commit run --all-files` | Хуки форматирования, линтеры, дополнительные проверки |
 
-- docker compose up --build
-- или docker compose up -d --build для запуска в фоне.
+Все команды можно запускать локально перед коммитом для быстрого фидбэка.
 
-Сервисы:
+## Deployment
 
-- bot — контейнер с Himera trading bot.
-- db — PostgreSQL 15 с volume db_data.
-- redis — Redis 7.
+- CI/CD (GitHub Actions):
+  - Линтинг (`golangci-lint`).
+  - Тесты (`go test ./...`).
+  - Покрытие (отчёты coverage).
+  - Security-сканы (`gosec`/прочие проверки).
+  - Сборка Docker-образа.
+  - Деплой на staging/production (скрипты зависят от настроек окружения).
 
-Логи:
+- Продакшн-деплой: сборка Docker-образа, обновление переменных окружения и конфигураций, раскатка в целевое окружение (Kubernetes/VM/Docker Swarm — в зависимости от выбранной инфраструктуры команды).
 
-- docker compose logs -f bot
-- docker compose logs -f db
-- docker compose logs -f redis
+## Roadmap / Phases
 
-Остановка:
+- **Phase 0 — Bootstrap**: каркас приложения, инфраструктурные модули, health/metrics, базовые репозитории.
+- **Phase 1 — MVP Trading Logic**: интеграция с DEX/аггрегаторами, первые торговые сценарии, расширение Telegram-команд.
+- **Phase 2 — Advanced Automation**: стратегия, риск-менеджмент, оркестрация сделок, интеграция с внешними сигналами.
+- **Phase 3 — Observability & Scaling**: расширенная телеметрия, алертинг, горизонтальное масштабирование, fault tolerance.
 
-- docker compose down
-- docker compose down -v для полного сноса с volumes.
-
-## 5. Схема БД (Phase 0)
-
-Начальная схема:
-
-Таблица users:
-
-- telegram_id BIGINT PRIMARY KEY
-- username VARCHAR(255)
-- balance DECIMAL(20,8) DEFAULT 10000 CHECK (balance >= 0)
-- created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-- updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-
-Таблица positions:
-
-- id BIGSERIAL PRIMARY KEY
-- telegram_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE
-- token_address VARCHAR(64) NOT NULL
-- token_symbol VARCHAR(32)
-- amount DECIMAL(30,18) NOT NULL CHECK (amount > 0)
-- avg_price DECIMAL(30,18) NOT NULL CHECK (avg_price > 0)
-- UNIQUE (telegram_id, token_address)
-
-Таблица transactions:
-
-- id BIGSERIAL PRIMARY KEY
-- telegram_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE
-- type VARCHAR(10) NOT NULL CHECK (type IN ('buy', 'sell'))
-- token_address VARCHAR(64) NOT NULL
-- amount DECIMAL(30,18) NOT NULL CHECK (amount > 0)
-- price_usd DECIMAL(30,18) NOT NULL CHECK (price_usd > 0)
-- total_usd DECIMAL(20,8) NOT NULL
-- pnl_usd DECIMAL(20,8)
-- created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-
-## 6. Миграции
-
-Файлы миграций:
-
-- migrations/000001_init_schema.up.sql — создание таблиц и функции set_updated_at.
-- migrations/000001_init_schema.down.sql — откат всей схемы users, positions, transactions.
-- migrations/000002_add_indexes.up.sql — индексы:
-  - idx_positions_telegram_id
-  - idx_transactions_telegram_id
-  - idx_transactions_token_address
-
-Дополнительно есть scripts/init-db.sql с тем же initial-скриптом для быстрого наката.
-
-## 7. Внутренний мигратор (internal/database/migrator.go)
-
-Мигратор:
-
-- читает директорию миграций;
-- выбирает файлы с суффиксом .up.sql;
-- сортирует их лексикографически;
-- выполняет по очереди через db.ExecContext.
-
-Пример использования (псевдокод, wiring будет в следующих фазах):
-
-- открыть соединение к Postgres по DSN;
-- создать logger;
-- создать Migrator через NewMigrator;
-- вызвать ApplyDir(ctx, "migrations").
-
-## 8. Сброс БД (scripts/reset-db.sh)
-
-Скрипт reset-db.sh:
-
-- выполняет docker compose down -v;
-- поднимает db и redis;
-- ждёт готовности Postgres через wait-for-it.sh;
-- поднимает bot.
-
-Удобно для локальной разработки, чтобы быстро получить чистое окружение.
-
-## 9. Дальнейшие фазы
-
-Phase 1 и далее:
-
-- описывают доменную модель,
-- use-cases бота,
-- Telegram-обработчики,
-- интеграцию с сетью Base L2 и торговой логикой.
-
-Phase 0 завершён, когда:
-
-- lint и tests проходят локально,
-- docker compose поднимает bot + db + redis,
-- миграции успешно накатываются на чистую БД.
+Готово! Теперь новый разработчик может поднять локальное окружение и познакомиться с кодовой базой за ~15 минут. Проверяйте README перед релизами, чтобы держать документацию актуальной.

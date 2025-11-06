@@ -1,0 +1,58 @@
+openapi: 3.0.3
+info:
+  title: Himera Trading Bot API
+  version: 0.1.0
+  description: |
+    Internal HTTP surface for Himera Trading Bot. Provides health checks and Prometheus metrics for monitoring and automation.
+servers:
+  - url: http://localhost:8080
+    description: Local development server (adjust port via server.port in config).
+paths:
+  /health:
+    get:
+      summary: Health check
+      description: Returns aggregated status of core components (PostgreSQL, Redis, Telegram bot, etc.).
+      responses:
+        '200':
+          description: All monitored components are healthy.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                database: OK
+                redis: OK
+                telegram: OK
+        '503':
+          description: At least one component is unhealthy.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                database: OK
+                redis: error: connection timeout
+                telegram: OK
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      description: Exposes Prometheus metrics in the standard exposition format.
+      responses:
+        '200':
+          description: Metrics payload in text format.
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: |
+                # HELP go_goroutines Number of goroutines that currently exist.
+                # TYPE go_goroutines gauge
+                go_goroutines 42
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      additionalProperties:
+        type: string
+      description: Map of component name to status string (`OK` or error message).
