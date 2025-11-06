@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/Proton-105/himera-bot/pkg/config"
 	"github.com/getsentry/sentry-go"
-	"github.com/himera-bot/trading-bot/pkg/config"
 	slogsentry "github.com/samber/slog-sentry/v2"
 	"gopkg.in/natefinch/lumberjack.v2"
 )

@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/himera-bot/trading-bot/internal/state"
-	appredis "github.com/himera-bot/trading-bot/pkg/redis"
+	"github.com/Proton-105/himera-bot/internal/state"
+	appredis "github.com/Proton-105/himera-bot/pkg/redis"
 	goredis "github.com/redis/go-redis/v9"
 )
 

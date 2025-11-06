@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	appredis "github.com/himera-bot/trading-bot/pkg/redis"
+	appredis "github.com/Proton-105/himera-bot/pkg/redis"
 	goredis "github.com/redis/go-redis/v9"
 )
 

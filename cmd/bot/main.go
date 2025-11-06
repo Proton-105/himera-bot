@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -13,14 +14,16 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Proton-105/himera-bot/internal/bot"
+	"github.com/Proton-105/himera-bot/internal/health"
+	"github.com/Proton-105/himera-bot/internal/middleware"
+	"github.com/Proton-105/himera-bot/internal/ratelimit"
+	"github.com/Proton-105/himera-bot/internal/repository"
+	"github.com/Proton-105/himera-bot/pkg/config"
+	"github.com/Proton-105/himera-bot/pkg/logger"
+	redisclient "github.com/Proton-105/himera-bot/pkg/redis"
 	"github.com/fsnotify/fsnotify"
 	"github.com/getsentry/sentry-go"
-	"github.com/himera-bot/trading-bot/internal/middleware"
-	"github.com/himera-bot/trading-bot/internal/ratelimit"
-	"github.com/himera-bot/trading-bot/internal/repository"
-	"github.com/himera-bot/trading-bot/pkg/config"
-	"github.com/himera-bot/trading-bot/pkg/logger"
-	redisclient "github.com/himera-bot/trading-bot/pkg/redis"
 	_ "github.com/lib/pq"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -117,11 +120,43 @@ func main() {
 		log.Error("redis delete error", "error", err, slog.String("key", "test_key"))
 	}
 
+	tgBot, err := bot.New(*cfg, log, db)
+	if err != nil {
+		log.Error("failed to create telegram bot", "error", err)
+		return
+	}
+
+	checker := health.NewChecker(log)
+	checker.AddCheck("database", health.NewDBChecker(db))
+	checker.AddCheck("redis", health.NewRedisChecker(coreRedisClient))
+	checker.AddCheck("telegram", health.NewTelegramChecker(tgBot.Telebot()))
+
+	go tgBot.Start()
+	log.Info("telegram bot started")
+
 	metricsLog := log.With(slog.String("subsystem", "metrics_http"))
 
 	go func() {
 		mux := http.NewServeMux()
 		mux.Handle("/metrics", logger.Middleware(loggingMiddleware(promhttp.Handler())))
+		mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+			results := checker.Check(r.Context())
+
+			status := http.StatusOK
+			for _, result := range results {
+				if result != "OK" {
+					status = http.StatusServiceUnavailable
+					break
+				}
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(status)
+
+			if err := json.NewEncoder(w).Encode(results); err != nil {
+				metricsLog.Error("failed to write health response", slog.Any("error", err))
+			}
+		})
 
 		server := &http.Server{
 			Addr:    fmt.Sprintf(":%s", cfg.Server.MetricsPort),
@@ -147,6 +182,7 @@ func main() {
 
 	<-ctx.Done()
 
+	tgBot.Stop()
 	sentry.Flush(2 * time.Second)
 
 	log.Info("shutdown signal received", "error", ctx.Err())

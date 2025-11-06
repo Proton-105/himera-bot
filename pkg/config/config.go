@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	redisclient "github.com/himera-bot/trading-bot/pkg/redis"
+	redisclient "github.com/Proton-105/himera-bot/pkg/redis"
 )
 
 // Config aggregates application configuration settings.
@@ -49,12 +49,20 @@ func (s ServerConfig) String() string {
 
 // BotConfig contains bot-related settings.
 type BotConfig struct {
-	Token   string        `mapstructure:"token" yaml:"token" validate:"required"`
-	Timeout time.Duration `mapstructure:"timeout" yaml:"timeout" validate:"required"`
+	Token      string        `mapstructure:"token" yaml:"token" validate:"required"`
+	Timeout    time.Duration `mapstructure:"timeout" yaml:"timeout" validate:"required"`
+	Mode       string        `mapstructure:"mode" yaml:"mode" validate:"required"`
+	WebhookURL string        `mapstructure:"webhook_url" yaml:"webhook_url"`
 }
 
 func (b BotConfig) String() string {
-	return fmt.Sprintf("Bot{Token:%s, Timeout:%s}", maskSecret(b.Token), b.Timeout)
+	return fmt.Sprintf(
+		"Bot{Token:%s, Timeout:%s, Mode:%s, WebhookURL:%s}",
+		maskSecret(b.Token),
+		b.Timeout,
+		b.Mode,
+		b.WebhookURL,
+	)
 }
 
 // DatabaseConfig contains PostgreSQL configuration.

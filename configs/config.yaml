@@ -6,6 +6,8 @@ server:
 
 bot:
   timeout: 120s
+  mode: "polling"
+  webhook_url: ""
 
 database:
   host: "localhost"

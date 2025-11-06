@@ -12,8 +12,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/himera-bot/trading-bot/pkg/config"
-	"github.com/himera-bot/trading-bot/pkg/logger"
+	"github.com/Proton-105/himera-bot/pkg/config"
+	"github.com/Proton-105/himera-bot/pkg/logger"
 )
 
 // Migrator applies plain .sql file migrations in lexical order.

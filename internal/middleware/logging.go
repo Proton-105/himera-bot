@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"time"
 
-	"github.com/himera-bot/trading-bot/pkg/logger"
+	"github.com/Proton-105/himera-bot/pkg/logger"
 )
 
 // New creates an HTTP middleware that logs request and response details.
