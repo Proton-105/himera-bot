@@ -8,12 +8,14 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/Proton-105/himera-bot/internal/bot"
 	"github.com/Proton-105/himera-bot/internal/health"
+	"github.com/Proton-105/himera-bot/internal/lifecycle"
 	"github.com/Proton-105/himera-bot/internal/middleware"
 	"github.com/Proton-105/himera-bot/internal/ratelimit"
 	"github.com/Proton-105/himera-bot/internal/state"
@@ -27,6 +29,11 @@ import (
 )
 
 func main() {
+	code := run()
+	os.Exit(code)
+}
+
+func run() int {
 	bootstrapCfg := config.Config{
 		AppEnv: "bootstrap",
 		Logger: config.LoggerConfig{Level: "info", Format: "text"},
@@ -39,7 +46,7 @@ func main() {
 	cfg, v, err := config.Load()
 	if err != nil {
 		bootstrapLog.Error("failed to load config", "error", err)
-		return
+		return 0
 	}
 
 	log := logger.New(*cfg).With(slog.String("component", "bootstrap"))
@@ -47,6 +54,7 @@ func main() {
 	log.Info("configuration loaded", slog.String("env", cfg.AppEnv))
 
 	loggingMiddleware := middleware.New(log)
+	shutdownCoordinator := lifecycle.NewShutdown(log.With(slog.String("component", "shutdown")))
 
 	v.WatchConfig()
 	configLog := log.With(slog.String("subsystem", "config_watcher"))
@@ -65,17 +73,18 @@ func main() {
 	db, err := sql.Open("postgres", cfg.Database.DSN())
 	if err != nil {
 		log.Error("failed to open database", "error", err)
-		return
+		return 0
 	}
-	defer func() {
-		if cerr := db.Close(); cerr != nil {
-			log.Error("error closing database connection", "error", cerr)
+	shutdownCoordinator.Register("db-close", func(ctx context.Context) error {
+		if db == nil {
+			return nil
 		}
-	}()
+		return db.Close()
+	})
 
 	if err = db.PingContext(ctx); err != nil {
 		log.Error("failed to ping database", "error", err)
-		return
+		return 0
 	}
 	log.Info("connected to database",
 		slog.String("host", cfg.Database.Host),
@@ -85,14 +94,15 @@ func main() {
 	coreRedisClient, err := redisclient.New(ctx, cfg.Redis.ToClientConfig())
 	if err != nil {
 		log.Error("failed to connect to redis", "error", err)
-		return
+		return 0
 	}
 	redisClient := redisclient.NewMetricsClient(coreRedisClient)
-	defer func() {
-		if cerr := redisClient.Close(); cerr != nil {
-			log.Error("error closing redis client", "error", cerr)
+	shutdownCoordinator.Register("redis-close", func(ctx context.Context) error {
+		if redisClient == nil {
+			return nil
 		}
-	}()
+		return redisClient.Close()
+	})
 	log.Info("connected to redis",
 		slog.String("host", cfg.Redis.Host),
 		slog.Int("db", cfg.Redis.DB),
@@ -132,7 +142,7 @@ func main() {
 	tgBot, err := bot.New(*cfg, log, db, fsm, rateLimitMw)
 	if err != nil {
 		log.Error("failed to create telegram bot", "error", err)
-		return
+		return 0
 	}
 
 	checker := health.NewChecker(log)
@@ -195,4 +205,16 @@ func main() {
 	sentry.Flush(2 * time.Second)
 
 	log.Info("shutdown signal received", "error", ctx.Err())
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	shutdownStart := time.Now()
+	if err := shutdownCoordinator.Execute(shutdownCtx); err != nil {
+		log.Error("shutdown completed with errors", slog.Any("error", err), slog.Duration("elapsed", time.Since(shutdownStart)))
+		cancel()
+		return 1
+	}
+
+	log.Info("shutdown completed successfully", slog.Duration("elapsed", time.Since(shutdownStart)))
+	cancel()
+	return 0
 }
