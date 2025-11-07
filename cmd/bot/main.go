@@ -1,5 +1,3 @@
-// cmd/bot/main.go
-
 package main
 
 import (
@@ -18,7 +16,7 @@ import (
 	"github.com/Proton-105/himera-bot/internal/health"
 	"github.com/Proton-105/himera-bot/internal/middleware"
 	"github.com/Proton-105/himera-bot/internal/ratelimit"
-	"github.com/Proton-105/himera-bot/internal/repository"
+	"github.com/Proton-105/himera-bot/internal/state"
 	"github.com/Proton-105/himera-bot/pkg/config"
 	"github.com/Proton-105/himera-bot/pkg/logger"
 	redisclient "github.com/Proton-105/himera-bot/pkg/redis"
@@ -100,8 +98,13 @@ func main() {
 		slog.Int("db", cfg.Redis.DB),
 	)
 
-	_ = repository.NewStateRepository(coreRedisClient)
-	log.Info("state repository initialized")
+	stateStorage := state.NewRedisStorage(coreRedisClient.Raw(), log)
+	fsm := state.NewStateMachine(stateStorage, log, coreRedisClient.Raw())
+	log.Info("state machine initialized")
+
+	cleaner := state.NewCleaner(coreRedisClient.Raw(), stateStorage, log, time.Hour, 5*time.Minute)
+	go cleaner.Run(ctx)
+	log.Info("state cleaner started", slog.Duration("ttl", time.Hour), slog.Duration("interval", 5*time.Minute))
 
 	_ = ratelimit.NewLimiter(coreRedisClient, 10, time.Second)
 	log.Info("rate limiter initialized", slog.Int("limit", 10), slog.Duration("window", time.Second))
@@ -120,7 +123,7 @@ func main() {
 		log.Error("redis delete error", "error", err, slog.String("key", "test_key"))
 	}
 
-	tgBot, err := bot.New(*cfg, log, db)
+	tgBot, err := bot.New(*cfg, log, db, fsm)
 	if err != nil {
 		log.Error("failed to create telegram bot", "error", err)
 		return

@@ -25,7 +25,7 @@ type Config struct {
 
 // Client wraps the go-redis client to expose typed helper methods.
 type Client struct {
-	*redis.Client
+	client *redis.Client
 }
 
 // New creates a Redis client configured with cfg and verifies the connection with Ping.
@@ -46,30 +46,40 @@ func New(ctx context.Context, cfg Config) (*Client, error) {
 	if err := rdb.Ping(ctx).Err(); err != nil {
 		return nil, fmt.Errorf("failed to connect to redis: %w", err)
 	}
-	return &Client{rdb}, nil
+	return &Client{client: rdb}, nil
+}
+
+// Raw exposes the underlying go-redis client for integrations that need it.
+func (c *Client) Raw() *redis.Client {
+	return c.client
+}
+
+// Ping forwards the ping command to the underlying client (used by health checks).
+func (c *Client) Ping(ctx context.Context) *redis.StatusCmd {
+	return c.client.Ping(ctx)
 }
 
 // Get retrieves a value for the provided key.
 func (c *Client) Get(ctx context.Context, key string) (string, error) {
-	return c.Client.Get(ctx, key).Result()
+	return c.client.Get(ctx, key).Result()
 }
 
 // Set stores a value under key with the specified TTL.
 func (c *Client) Set(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
-	return c.Client.Set(ctx, key, value, ttl).Err()
+	return c.client.Set(ctx, key, value, ttl).Err()
 }
 
 // Delete removes the specified key.
 func (c *Client) Delete(ctx context.Context, key string) error {
-	return c.Client.Del(ctx, key).Err()
+	return c.client.Del(ctx, key).Err()
 }
 
 // TxPipeline creates a transactional pipeline.
 func (c *Client) TxPipeline() redis.Pipeliner {
-	return c.Client.TxPipeline()
+	return c.client.TxPipeline()
 }
 
 // Close shuts down the Redis client.
 func (c *Client) Close() error {
-	return c.Client.Close()
+	return c.client.Close()
 }
