@@ -1,0 +1,25 @@
+# Global rate limit applied across the entire bot to protect shared resources.
+global:
+  limit: 1000
+  window: "1m"
+
+# Per-user limit to prevent individual users from spamming commands.
+per_user:
+  limit: 10
+  window: "1s"
+
+# Command-specific limits to fine-tune throttling by action type.
+commands:
+  buy:
+    limit: 5
+    window: "1m"
+  sell:
+    limit: 5
+    window: "1m"
+  portfolio:
+    limit: 30
+    window: "1m"
+
+# Telegram user IDs exempt from rate limiting (e.g., admins, operators).
+whitelist:
+  - 123456789

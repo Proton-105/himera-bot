@@ -106,8 +106,14 @@ func main() {
 	go cleaner.Run(ctx)
 	log.Info("state cleaner started", slog.Duration("ttl", time.Hour), slog.Duration("interval", 5*time.Minute))
 
-	_ = ratelimit.NewLimiter(coreRedisClient, 10, time.Second)
-	log.Info("rate limiter initialized", slog.Int("limit", 10), slog.Duration("window", time.Second))
+	rules := ratelimit.NewRules(cfg.RateLimit)
+	redisLimiter := ratelimit.NewRedisLimiter(coreRedisClient.Raw(), log)
+	memoryLimiter := ratelimit.NewMemoryLimiter(log)
+	adaptiveLimiter := ratelimit.NewAdaptiveLimiter(redisLimiter, memoryLimiter, log)
+	rateLimitMw := middleware.NewRateLimitMiddleware(adaptiveLimiter, rules, log)
+	rateLimitCleaner := ratelimit.NewCleaner(coreRedisClient.Raw(), log, time.Minute)
+	go rateLimitCleaner.Run(ctx)
+	log.Info("rate limit cleaner started", slog.Duration("interval", time.Minute))
 
 	log.Info("performing test redis operations for metrics")
 	if err := redisClient.Set(ctx, "test_key", "test_value", 10*time.Second); err != nil {
@@ -123,7 +129,7 @@ func main() {
 		log.Error("redis delete error", "error", err, slog.String("key", "test_key"))
 	}
 
-	tgBot, err := bot.New(*cfg, log, db, fsm)
+	tgBot, err := bot.New(*cfg, log, db, fsm, rateLimitMw)
 	if err != nil {
 		log.Error("failed to create telegram bot", "error", err)
 		return

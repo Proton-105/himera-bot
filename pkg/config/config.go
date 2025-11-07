@@ -10,20 +10,21 @@ import (
 
 // Config aggregates application configuration settings.
 type Config struct {
-	AppEnv   string         `mapstructure:"app_env" yaml:"-" validate:"required"`
-	Server   ServerConfig   `mapstructure:"server" yaml:"server" validate:"required"`
-	Bot      BotConfig      `mapstructure:"bot" yaml:"bot" validate:"required"`
-	Database DatabaseConfig `mapstructure:"database" yaml:"database" validate:"required"`
-	Redis    RedisConfig    `mapstructure:"redis" yaml:"redis" validate:"required"`
-	API      APIConfig      `mapstructure:"api" yaml:"api" validate:"required"`
-	Logger   LoggerConfig   `mapstructure:"logging" yaml:"logging" validate:"required"`
-	Sentry   SentryConfig   `mapstructure:"sentry" yaml:"sentry" validate:"required"`
+	AppEnv    string          `mapstructure:"app_env" yaml:"-" validate:"required"`
+	Server    ServerConfig    `mapstructure:"server" yaml:"server" validate:"required"`
+	Bot       BotConfig       `mapstructure:"bot" yaml:"bot" validate:"required"`
+	Database  DatabaseConfig  `mapstructure:"database" yaml:"database" validate:"required"`
+	Redis     RedisConfig     `mapstructure:"redis" yaml:"redis" validate:"required"`
+	API       APIConfig       `mapstructure:"api" yaml:"api" validate:"required"`
+	Logger    LoggerConfig    `mapstructure:"logging" yaml:"logging" validate:"required"`
+	Sentry    SentryConfig    `mapstructure:"sentry" yaml:"sentry" validate:"required"`
+	RateLimit RateLimitConfig `mapstructure:"ratelimit" yaml:"ratelimit"`
 }
 
 // String returns a masked representation of the configuration.
 func (c Config) String() string {
 	return fmt.Sprintf(
-		"Config{AppEnv:%s, Server:%s, Bot:%s, Database:%s, Redis:%s, API:%s, Logger:%s, Sentry:%s}",
+		"Config{AppEnv:%s, Server:%s, Bot:%s, Database:%s, Redis:%s, API:%s, Logger:%s, Sentry:%s, RateLimit:%s}",
 		c.AppEnv,
 		c.Server.String(),
 		c.Bot.String(),
@@ -32,6 +33,7 @@ func (c Config) String() string {
 		c.API.String(),
 		c.Logger.String(),
 		fmt.Sprintf("Sentry{DSN:%s, Enabled:%t}", maskSecret(c.Sentry.DSN), c.Sentry.Enabled),
+		c.RateLimit.String(),
 	)
 }
 
@@ -144,6 +146,40 @@ func (l LoggerConfig) String() string {
 type SentryConfig struct {
 	DSN     string `mapstructure:"dsn" yaml:"dsn"`
 	Enabled bool   `mapstructure:"enabled" yaml:"enabled"`
+}
+
+// RateLimitRule represents a single rate limit entry.
+type RateLimitRule struct {
+	Limit  int    `mapstructure:"limit" yaml:"limit"`
+	Window string `mapstructure:"window" yaml:"window"`
+}
+
+// RateLimitCommandsConfig groups per-command limits.
+type RateLimitCommandsConfig struct {
+	Buy       RateLimitRule `mapstructure:"buy" yaml:"buy"`
+	Sell      RateLimitRule `mapstructure:"sell" yaml:"sell"`
+	Portfolio RateLimitRule `mapstructure:"portfolio" yaml:"portfolio"`
+}
+
+// RateLimitConfig aggregates rate-limiter settings.
+type RateLimitConfig struct {
+	Global    RateLimitRule           `mapstructure:"global" yaml:"global"`
+	PerUser   RateLimitRule           `mapstructure:"per_user" yaml:"per_user"`
+	Commands  RateLimitCommandsConfig `mapstructure:"commands" yaml:"commands"`
+	Whitelist []int64                 `mapstructure:"whitelist" yaml:"whitelist"`
+}
+
+// String returns a compact string representation of rate limit settings.
+func (r RateLimitConfig) String() string {
+	return fmt.Sprintf(
+		"RateLimit{Global:{Limit:%d Window:%s}, PerUser:{Limit:%d Window:%s}, Commands:{Buy:%d/%s Sell:%d/%s Portfolio:%d/%s}, Whitelist:%d}",
+		r.Global.Limit, r.Global.Window,
+		r.PerUser.Limit, r.PerUser.Window,
+		r.Commands.Buy.Limit, r.Commands.Buy.Window,
+		r.Commands.Sell.Limit, r.Commands.Sell.Window,
+		r.Commands.Portfolio.Limit, r.Commands.Portfolio.Window,
+		len(r.Whitelist),
+	)
 }
 
 func maskSecret(value string) string {
