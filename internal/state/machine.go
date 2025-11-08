@@ -24,12 +24,25 @@ var (
 	ErrStateLocked = errors.New("state is locked, try again later")
 )
 
+var transitionRecorder = func(from, to string) {}
+
+// RegisterTransitionRecorder allows external packages to observe FSM transitions.
+func RegisterTransitionRecorder(recorder func(from, to string)) {
+	if recorder == nil {
+		transitionRecorder = func(string, string) {}
+		return
+	}
+
+	transitionRecorder = recorder
+}
+
 // StateMachine describes the operations supported by the FSM controller.
 type StateMachine interface {
 	GetState(ctx context.Context, userID int64) (*UserState, error)
 	SetState(ctx context.Context, userID int64, state State, contextData map[string]interface{}) error
 	TransitionTo(ctx context.Context, userID int64, newState State) error
 	ClearState(ctx context.Context, userID int64) error
+	GetAllStates(ctx context.Context) ([]*UserState, error)
 }
 
 // machine is a concrete implementation of StateMachine backed by Storage and Redis locking.
@@ -55,6 +68,11 @@ func NewStateMachine(storage Storage, log *slog.Logger, redisClient *redis.Clien
 // GetState proxies to the underlying storage implementation.
 func (m *machine) GetState(ctx context.Context, userID int64) (*UserState, error) {
 	return m.storage.GetState(ctx, userID)
+}
+
+// GetAllStates returns every persisted user state.
+func (m *machine) GetAllStates(ctx context.Context) ([]*UserState, error) {
+	return m.storage.GetAllStates(ctx)
 }
 
 // SetState composes a UserState and persists it via storage under a distributed lock.
@@ -91,6 +109,8 @@ func (m *machine) TransitionTo(ctx context.Context, userID int64, newState State
 		}
 		return ErrInvalidTransition
 	}
+
+	transitionRecorder(string(current), string(newState))
 
 	return m.saveState(ctx, userID, newState, nil)
 }

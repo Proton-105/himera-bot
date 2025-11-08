@@ -11,4 +11,6 @@ type Storage interface {
 	SetState(ctx context.Context, userID int64, state *UserState) error
 	// ClearState removes the state for the specified user.
 	ClearState(ctx context.Context, userID int64) error
+	// GetAllStates returns all stored user states.
+	GetAllStates(ctx context.Context) ([]*UserState, error)
 }

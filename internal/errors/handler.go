@@ -8,6 +8,7 @@ import (
 	"github.com/getsentry/sentry-go"
 
 	"github.com/Proton-105/himera-bot/pkg/logger"
+	"github.com/Proton-105/himera-bot/pkg/metrics"
 )
 
 type Handler struct {
@@ -51,6 +52,8 @@ func (h *Handler) Handle(ctx context.Context, err error) (string, bool) {
 
 		log.Error("application error", attrsToArgs(attrs)...)
 
+		metrics.RecordError(appErr.Code, string(appErr.Severity))
+
 		if h.sentryEnabled && (appErr.Severity == SeverityCritical || appErr.Severity == SeverityHigh) {
 			h.sendToSentry(err)
 		}
@@ -74,6 +77,7 @@ func (h *Handler) Handle(ctx context.Context, err error) (string, bool) {
 	}
 
 	log.Error("unknown error", attrsToArgs(attrs)...)
+	metrics.RecordError("unknown", string(SeverityCritical))
 
 	if h.sentryEnabled {
 		h.sendToSentry(err)

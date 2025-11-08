@@ -1,0 +1,40 @@
+{
+  "title": "CHIMERA Bot Overview",
+  "panels": [
+    {
+      "title": "RPS",
+      "type": "graph",
+      "targets": [
+        { "expr": "rate(bot_commands_total[1m])" }
+      ]
+    },
+    {
+      "title": "Error Rate %",
+      "type": "graph",
+      "targets": [
+        { "expr": "sum(rate(bot_commands_total{status=\"error\"}[1m])) / sum(rate(bot_commands_total[1m])) * 100" }
+      ]
+    },
+    {
+      "title": "p95 Command Latency",
+      "type": "graph",
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(command_duration_seconds_bucket[5m])) by (le))" }
+      ]
+    },
+    {
+      "title": "Active Users",
+      "type": "singlestat",
+      "targets": [
+        { "expr": "active_users" }
+      ]
+    },
+    {
+      "title": "Users by State",
+      "type": "piechart",
+      "targets": [
+        { "expr": "sum(users_by_state) by (state)" }
+      ]
+    }
+  ]
+}

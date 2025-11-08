@@ -36,6 +36,12 @@ func (m *mockStorage) ClearState(ctx context.Context, userID int64) error {
 	return args.Error(0)
 }
 
+func (m *mockStorage) GetAllStates(ctx context.Context) ([]*UserState, error) {
+	args := m.Called(ctx)
+	states, _ := args.Get(0).([]*UserState)
+	return states, args.Error(1)
+}
+
 func TestStateMachine_TransitionTo(t *testing.T) {
 	ctx := context.Background()
 	userID := int64(42)
@@ -373,6 +379,18 @@ func (s *inMemoryStorage) ClearState(ctx context.Context, userID int64) error {
 
 	delete(s.states, userID)
 	return nil
+}
+
+func (s *inMemoryStorage) GetAllStates(ctx context.Context) ([]*UserState, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	results := make([]*UserState, 0, len(s.states))
+	for _, st := range s.states {
+		results = append(results, cloneState(st))
+	}
+
+	return results, nil
 }
 
 func cloneState(state *UserState) *UserState {

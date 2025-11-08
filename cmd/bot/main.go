@@ -22,6 +22,7 @@ import (
 	"github.com/Proton-105/himera-bot/internal/state"
 	"github.com/Proton-105/himera-bot/pkg/config"
 	"github.com/Proton-105/himera-bot/pkg/logger"
+	"github.com/Proton-105/himera-bot/pkg/metrics"
 	redisclient "github.com/Proton-105/himera-bot/pkg/redis"
 	"github.com/fsnotify/fsnotify"
 	"github.com/getsentry/sentry-go"
@@ -114,6 +115,10 @@ func run() int {
 	stateStorage := state.NewRedisStorage(coreRedisClient.Raw(), log)
 	fsm := state.NewStateMachine(stateStorage, log, coreRedisClient.Raw())
 	log.Info("state machine initialized")
+
+	stateCollector := metrics.NewStateCollector(fsm)
+	go stateCollector.Run(ctx)
+	log.Info("state metrics collector started")
 
 	cleaner := state.NewCleaner(coreRedisClient.Raw(), stateStorage, log, time.Hour, 5*time.Minute)
 	go cleaner.Run(ctx)

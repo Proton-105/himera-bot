@@ -11,7 +11,10 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-const userStateKeyPattern = "user:state:%d"
+const (
+	userStateKeyPattern  = "user:state:%d"
+	userStateScanPattern = "user:state:*"
+)
 
 // RedisStorage persists user FSM states in Redis.
 type RedisStorage struct {
@@ -82,6 +85,50 @@ func (s *RedisStorage) ClearState(ctx context.Context, userID int64) error {
 	}
 
 	return nil
+}
+
+// GetAllStates retrieves every stored user state by scanning Redis keys.
+func (s *RedisStorage) GetAllStates(ctx context.Context) ([]*UserState, error) {
+	var (
+		cursor uint64
+		result []*UserState
+	)
+
+	for {
+		keys, nextCursor, err := s.client.Scan(ctx, cursor, userStateScanPattern, 100).Result()
+		if err != nil {
+			s.log.Error("failed to scan user states", "error", err)
+			return nil, err
+		}
+
+		for _, key := range keys {
+			data, err := s.client.Get(ctx, key).Result()
+			if err != nil {
+				if errors.Is(err, redis.Nil) {
+					continue
+				}
+
+				s.log.Error("failed to fetch user state", "key", key, "error", err)
+				return nil, err
+			}
+
+			var userState UserState
+			if err := json.Unmarshal([]byte(data), &userState); err != nil {
+				s.log.Error("failed to decode user state", "key", key, "error", err)
+				continue
+			}
+
+			copied := userState
+			result = append(result, &copied)
+		}
+
+		cursor = nextCursor
+		if cursor == 0 {
+			break
+		}
+	}
+
+	return result, nil
 }
 
 func redisUserStateKey(userID int64) string {
