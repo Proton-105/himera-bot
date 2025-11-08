@@ -15,6 +15,7 @@ import (
 
 	"github.com/Proton-105/himera-bot/internal/bot"
 	"github.com/Proton-105/himera-bot/internal/health"
+	"github.com/Proton-105/himera-bot/internal/idempotency"
 	"github.com/Proton-105/himera-bot/internal/lifecycle"
 	"github.com/Proton-105/himera-bot/internal/middleware"
 	"github.com/Proton-105/himera-bot/internal/ratelimit"
@@ -42,7 +43,6 @@ func run() int {
 		Sentry: config.SentryConfig{Enabled: false},
 	}
 	bootstrapLog := logger.New(bootstrapCfg).With(slog.String("component", "bootstrap"))
-
 	bootstrapLog.Info("loading configuration")
 
 	cfg, v, err := config.Load()
@@ -120,6 +120,12 @@ func run() int {
 	go stateCollector.Run(ctx)
 	log.Info("state metrics collector started")
 
+	idempotencyStore := idempotency.NewRedisStore(coreRedisClient.Raw(), log)
+	idempotencyManager := idempotency.NewManager(idempotencyStore, log)
+	idempotencyCleaner := idempotency.NewCleaner(coreRedisClient.Raw(), log, time.Hour)
+	go idempotencyCleaner.Run(ctx)
+	log.Info("idempotency cleaner started")
+
 	cleaner := state.NewCleaner(coreRedisClient.Raw(), stateStorage, log, time.Hour, 5*time.Minute)
 	go cleaner.Run(ctx)
 	log.Info("state cleaner started", slog.Duration("ttl", time.Hour), slog.Duration("interval", 5*time.Minute))
@@ -147,7 +153,7 @@ func run() int {
 		log.Error("redis delete error", "error", err, slog.String("key", "test_key"))
 	}
 
-	tgBot, err := bot.New(*cfg, log, db, fsm, rateLimitMw, userRepo)
+	tgBot, err := bot.New(*cfg, log, db, fsm, idempotencyManager, rateLimitMw, userRepo)
 	if err != nil {
 		log.Error("failed to create telegram bot", "error", err)
 		return 0
