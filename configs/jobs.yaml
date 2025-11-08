@@ -1,0 +1,5 @@
+enabled: true # Toggles the background job system.
+queues: # Defines the queues and their priority/weight.
+  critical: 6 # High priority tasks (e.g., trades)
+  default: 3 # Normal tasks (e.g., price updates)
+  low: 1     # Low priority tasks (e.g., cleanup)

@@ -19,12 +19,13 @@ type Config struct {
 	Logger    LoggerConfig    `mapstructure:"logging" yaml:"logging" validate:"required"`
 	Sentry    SentryConfig    `mapstructure:"sentry" yaml:"sentry" validate:"required"`
 	RateLimit RateLimitConfig `mapstructure:"ratelimit" yaml:"ratelimit"`
+	Jobs      JobsConfig      `mapstructure:"jobs" yaml:"jobs"`
 }
 
 // String returns a masked representation of the configuration.
 func (c Config) String() string {
 	return fmt.Sprintf(
-		"Config{AppEnv:%s, Server:%s, Bot:%s, Database:%s, Redis:%s, API:%s, Logger:%s, Sentry:%s, RateLimit:%s}",
+		"Config{AppEnv:%s, Server:%s, Bot:%s, Database:%s, Redis:%s, API:%s, Logger:%s, Sentry:%s, RateLimit:%s, Jobs:%s}",
 		c.AppEnv,
 		c.Server.String(),
 		c.Bot.String(),
@@ -34,6 +35,7 @@ func (c Config) String() string {
 		c.Logger.String(),
 		fmt.Sprintf("Sentry{DSN:%s, Enabled:%t}", maskSecret(c.Sentry.DSN), c.Sentry.Enabled),
 		c.RateLimit.String(),
+		c.Jobs.String(),
 	)
 }
 
@@ -180,6 +182,24 @@ func (r RateLimitConfig) String() string {
 		r.Commands.Portfolio.Limit, r.Commands.Portfolio.Window,
 		len(r.Whitelist),
 	)
+}
+
+// JobsQueuesConfig defines queue weights for background jobs.
+type JobsQueuesConfig struct {
+	Critical int `mapstructure:"critical" yaml:"critical"`
+	Default  int `mapstructure:"default" yaml:"default"`
+	Low      int `mapstructure:"low" yaml:"low"`
+}
+
+// JobsConfig groups background job scheduler settings.
+type JobsConfig struct {
+	Enabled bool             `mapstructure:"enabled" yaml:"enabled"`
+	Queues  JobsQueuesConfig `mapstructure:"queues" yaml:"queues"`
+}
+
+func (j JobsConfig) String() string {
+	return fmt.Sprintf("Jobs{Enabled:%t, Queues:{Critical:%d Default:%d Low:%d}}",
+		j.Enabled, j.Queues.Critical, j.Queues.Default, j.Queues.Low)
 }
 
 func maskSecret(value string) string {
