@@ -18,6 +18,7 @@ import (
 	"github.com/Proton-105/himera-bot/internal/lifecycle"
 	"github.com/Proton-105/himera-bot/internal/middleware"
 	"github.com/Proton-105/himera-bot/internal/ratelimit"
+	"github.com/Proton-105/himera-bot/internal/repository"
 	"github.com/Proton-105/himera-bot/internal/state"
 	"github.com/Proton-105/himera-bot/pkg/config"
 	"github.com/Proton-105/himera-bot/pkg/logger"
@@ -91,6 +92,8 @@ func run() int {
 		slog.String("database", cfg.Database.Name),
 	)
 
+	userRepo := repository.NewUserRepository(db, log)
+
 	coreRedisClient, err := redisclient.New(ctx, cfg.Redis.ToClientConfig())
 	if err != nil {
 		log.Error("failed to connect to redis", "error", err)
@@ -139,7 +142,7 @@ func run() int {
 		log.Error("redis delete error", "error", err, slog.String("key", "test_key"))
 	}
 
-	tgBot, err := bot.New(*cfg, log, db, fsm, rateLimitMw)
+	tgBot, err := bot.New(*cfg, log, db, fsm, rateLimitMw, userRepo)
 	if err != nil {
 		log.Error("failed to create telegram bot", "error", err)
 		return 0
