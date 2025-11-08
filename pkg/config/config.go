@@ -107,10 +107,15 @@ func (r RedisConfig) String() string {
 	return fmt.Sprintf("Redis{Host:%s, Port:%s, Password:%s, DB:%d}", r.Host, r.Port, maskSecret(r.Password), r.DB)
 }
 
+// Addr returns the Redis host:port pair.
+func (r RedisConfig) Addr() string {
+	return fmt.Sprintf("%s:%s", r.Host, r.Port)
+}
+
 // ToClientConfig converts to the redis client configuration.
 func (r RedisConfig) ToClientConfig() redisclient.Config {
 	return redisclient.Config{
-		Addr:            fmt.Sprintf("%s:%s", r.Host, r.Port),
+		Addr:            r.Addr(),
 		Password:        r.Password,
 		DB:              r.DB,
 		PoolSize:        r.PoolSize,
@@ -189,6 +194,27 @@ type JobsQueuesConfig struct {
 	Critical int `mapstructure:"critical" yaml:"critical"`
 	Default  int `mapstructure:"default" yaml:"default"`
 	Low      int `mapstructure:"low" yaml:"low"`
+}
+
+func (j JobsQueuesConfig) ToMap() map[string]int {
+	queues := map[string]int{
+		"critical": j.Critical,
+		"default":  j.Default,
+		"low":      j.Low,
+	}
+
+	filtered := make(map[string]int, len(queues))
+	for name, weight := range queues {
+		if weight > 0 {
+			filtered[name] = weight
+		}
+	}
+
+	if len(filtered) == 0 {
+		filtered["default"] = 1
+	}
+
+	return filtered
 }
 
 // JobsConfig groups background job scheduler settings.

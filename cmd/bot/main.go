@@ -13,9 +13,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/hibiken/asynq"
+
 	"github.com/Proton-105/himera-bot/internal/bot"
 	"github.com/Proton-105/himera-bot/internal/health"
 	"github.com/Proton-105/himera-bot/internal/idempotency"
+	"github.com/Proton-105/himera-bot/internal/jobs"
+	"github.com/Proton-105/himera-bot/internal/jobs/handlers"
 	"github.com/Proton-105/himera-bot/internal/lifecycle"
 	"github.com/Proton-105/himera-bot/internal/middleware"
 	"github.com/Proton-105/himera-bot/internal/ratelimit"
@@ -112,6 +116,37 @@ func run() int {
 		slog.Int("db", cfg.Redis.DB),
 	)
 
+	redisConnectionOpt := asynq.RedisClientOpt{
+		Addr:     cfg.Redis.Addr(),
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
+	}
+
+	jobManager := jobs.NewManager(redisConnectionOpt, log)
+	jobWorker := jobs.NewWorker(redisConnectionOpt, cfg.Jobs.Queues.ToMap(), log)
+	jobScheduler := jobs.NewScheduler(redisConnectionOpt, log)
+
+	shutdownCoordinator.Register("jobs-manager-close", func(ctx context.Context) error {
+		if jobManager == nil {
+			return nil
+		}
+		return jobManager.Close()
+	})
+	shutdownCoordinator.Register("jobs-worker-shutdown", func(ctx context.Context) error {
+		if jobWorker == nil {
+			return nil
+		}
+		jobWorker.Shutdown()
+		return nil
+	})
+	shutdownCoordinator.Register("jobs-scheduler-shutdown", func(ctx context.Context) error {
+		if jobScheduler == nil {
+			return nil
+		}
+		jobScheduler.Shutdown()
+		return nil
+	})
+
 	stateStorage := state.NewRedisStorage(coreRedisClient.Raw(), log)
 	fsm := state.NewStateMachine(stateStorage, log, coreRedisClient.Raw())
 	log.Info("state machine initialized")
@@ -138,6 +173,30 @@ func run() int {
 	rateLimitCleaner := ratelimit.NewCleaner(coreRedisClient.Raw(), log, time.Minute)
 	go rateLimitCleaner.Run(ctx)
 	log.Info("rate limit cleaner started", slog.Duration("interval", time.Minute))
+
+	jobLog := log.With(slog.String("component", "jobs"))
+
+	if cfg.Jobs.Enabled {
+		priceUpdateHandler := handlers.NewPriceUpdateHandler(jobLog.With(slog.String("handler", "price_update")))
+		jobWorker.RegisterHandler(jobs.TaskTypePriceUpdate, priceUpdateHandler)
+
+		if err := jobScheduler.RegisterTasks(); err != nil {
+			jobLog.Error("failed to register scheduled jobs", slog.Any("error", err))
+		} else {
+			jobScheduler.Run()
+			jobLog.Info("scheduler started")
+		}
+
+		go func() {
+			if err := jobWorker.Run(); err != nil {
+				jobLog.Error("worker stopped", slog.Any("error", err))
+				stop()
+			}
+		}()
+		jobLog.Info("worker started")
+	} else {
+		jobLog.Info("background jobs disabled, skipping worker and scheduler")
+	}
 
 	log.Info("performing test redis operations for metrics")
 	if err := redisClient.Set(ctx, "test_key", "test_value", 10*time.Second); err != nil {
