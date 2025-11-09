@@ -26,3 +26,6 @@ docker-data/
 .gocache/
 .vscode/
 AGENTS_MCP.md
+
+# Compiled application binary
+/bot
