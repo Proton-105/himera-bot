@@ -1,0 +1,35 @@
+en:
+  main_menu:
+    buy: "💵 Buy"
+    sell: "💸 Sell"
+    portfolio: "📊 Portfolio"
+    balance: "💰 Balance"
+    top_tokens: "📈 Top Tokens"
+    history: "📝 History"
+    settings: "⚙️ Settings"
+
+  amount_keyboard:
+    pct_10: "10%"
+    pct_25: "25%"
+    pct_50: "50%"
+    pct_100: "100%"
+    custom: "✏️ Custom amount"
+    cancel: "❌ Cancel"
+
+ru:
+  main_menu:
+    buy: "💵 Купить"
+    sell: "💸 Продать"
+    portfolio: "📊 Портфель"
+    balance: "💰 Баланс"
+    top_tokens: "📈 Топ токенов"
+    history: "📝 История"
+    settings: "⚙️ Настройки"
+
+  amount_keyboard:
+    pct_10: "10%"
+    pct_25: "25%"
+    pct_50: "50%"
+    pct_100: "100%"
+    custom: "✏️ Своя сумма"
+    cancel: "❌ Отмена"
