@@ -37,17 +37,8 @@ func (b *InlineKeyboardBuilder) AddRow(buttons ...InlineButton) *InlineKeyboardB
 	return b
 }
 
-// Build finalizes inline markup using the provided encoder to produce callback data strings.
-func (b *InlineKeyboardBuilder) Build(encoder func(unique, data string) string) *telebot.ReplyMarkup {
-	if encoder == nil {
-		encoder = func(unique, data string) string {
-			if data != "" {
-				return data
-			}
-			return unique
-		}
-	}
-
+// Build finalizes inline markup encoding callback data using EncodeCallback.
+func (b *InlineKeyboardBuilder) Build() (*telebot.ReplyMarkup, error) {
 	if b.markup == nil {
 		b.markup = &telebot.ReplyMarkup{}
 	}
@@ -56,14 +47,19 @@ func (b *InlineKeyboardBuilder) Build(encoder func(unique, data string) string) 
 	for i, row := range b.rows {
 		inlineKeyboard[i] = make([]telebot.InlineButton, len(row))
 		for j, btn := range row {
+			callbackData, err := EncodeCallback(btn.Unique, btn.Data)
+			if err != nil {
+				return nil, err
+			}
+
 			inlineKeyboard[i][j] = telebot.InlineButton{
 				Text:   btn.Text,
 				Unique: btn.Unique,
-				Data:   encoder(btn.Unique, btn.Data),
+				Data:   callbackData,
 			}
 		}
 	}
 
 	b.markup.InlineKeyboard = inlineKeyboard
-	return b.markup
+	return b.markup, nil
 }
