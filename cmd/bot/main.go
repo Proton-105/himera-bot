@@ -17,6 +17,7 @@ import (
 
 	"github.com/Proton-105/himera-bot/internal/bot"
 	"github.com/Proton-105/himera-bot/internal/health"
+	"github.com/Proton-105/himera-bot/internal/i18n"
 	"github.com/Proton-105/himera-bot/internal/idempotency"
 	"github.com/Proton-105/himera-bot/internal/jobs"
 	"github.com/Proton-105/himera-bot/internal/jobs/handlers"
@@ -216,7 +217,13 @@ func run() int {
 		log.Error("redis delete error", "error", err, slog.String("key", "test_key"))
 	}
 
-	tgBot, err := bot.New(*cfg, log, db, fsm, idempotencyManager, rateLimitMw, userRepo, userService)
+	i18nManager, err := i18n.Load("ru")
+	if err != nil {
+		log.Error("failed to load translations", "error", err)
+		return 0
+	}
+
+	tgBot, err := bot.New(*cfg, log, db, fsm, idempotencyManager, rateLimitMw, userRepo, userService, i18nManager)
 	if err != nil {
 		log.Error("failed to create telegram bot", "error", err)
 		return 0

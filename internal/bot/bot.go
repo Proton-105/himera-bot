@@ -1,9 +1,7 @@
 package bot
 
 import (
-	"context"
 	"database/sql"
-	stdErrors "errors"
 	"fmt"
 	"log/slog"
 
@@ -12,6 +10,7 @@ import (
 	"github.com/Proton-105/himera-bot/internal/bot/handlers"
 	"github.com/Proton-105/himera-bot/internal/bot/keyboard"
 	errors "github.com/Proton-105/himera-bot/internal/errors"
+	"github.com/Proton-105/himera-bot/internal/i18n"
 	"github.com/Proton-105/himera-bot/internal/idempotency"
 	"github.com/Proton-105/himera-bot/internal/middleware"
 	"github.com/Proton-105/himera-bot/internal/repository"
@@ -38,6 +37,7 @@ type Bot struct {
 	keyboard           *keyboard.Builder
 	errHandler         *errors.Handler
 	idempotencyManager idempotency.Manager
+	i18n               *i18n.Manager
 }
 
 // New builds a telegram bot instance configured according to the application settings.
@@ -50,6 +50,7 @@ func New(
 	rateLimitMw *middleware.RateLimitMiddleware,
 	userRepo repository.UserRepository,
 	userService *user.Service,
+	i18nManager *i18n.Manager,
 ) (*Bot, error) {
 	settings := telebot.Settings{
 		Token: cfg.Bot.Token,
@@ -87,6 +88,7 @@ func New(
 		keyboard:           kb,
 		errHandler:         errHandler,
 		idempotencyManager: idempotencyManager,
+		i18n:               i18nManager,
 	}
 
 	b.setupRouter(userRepo, userService, log)
@@ -138,7 +140,7 @@ func (b *Bot) setupRouter(userRepo repository.UserRepository, userService *user.
 	b.router.Use(LastActiveMiddleware(userService))
 	b.router.Use(middleware.Metrics)
 
-	b.router.RegisterCommand(CommandStart, newStartCommandHandler(b.fsm, b.log))
+	b.router.RegisterCommand(CommandStart, handlers.NewStartHandler(b.fsm, b.log, b.i18n))
 	b.router.RegisterCommand(CommandCancel, handlers.NewCancelHandler(b.fsm, b.keyboard, b.log))
 
 	if userService == nil {
@@ -162,44 +164,4 @@ func (b *Bot) registerTelebotHandlers() {
 
 	b.telebot.Handle(telebot.OnText, b.router.Route)
 	b.telebot.Handle(telebot.OnCallback, b.router.Route)
-}
-
-func newStartCommandHandler(fsm state.StateMachine, log *slog.Logger) handlers.Handler {
-	return func(c telebot.Context) error {
-		if c == nil || c.Sender() == nil {
-			if log != nil {
-				log.Warn("start handler invoked without sender")
-			}
-			return nil
-		}
-
-		if fsm == nil {
-			if log != nil {
-				log.Error("state machine not configured for start handler")
-			}
-			return c.Send("An internal error occurred. Please try again later.")
-		}
-
-		ctx := context.Background()
-		userID := c.Sender().ID
-
-		_, err := fsm.GetState(ctx, userID)
-		switch {
-		case err == nil:
-			return c.Send("Welcome back!")
-		case stdErrors.Is(err, state.ErrStateNotFound):
-			if setErr := fsm.SetState(ctx, userID, state.StateIdle, nil); setErr != nil {
-				if log != nil {
-					log.Error("failed to set initial user state", slog.Int64("telegram_id", userID), slog.Any("error", setErr))
-				}
-				return c.Send("An internal error occurred. Please try again later.")
-			}
-			return c.Send("Welcome! Let's get you set up.")
-		default:
-			if log != nil {
-				log.Error("failed to fetch user state", slog.Int64("telegram_id", userID), slog.Any("error", err))
-			}
-			return c.Send("An internal error occurred. Please try again later.")
-		}
-	}
 }

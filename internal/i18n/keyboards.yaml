@@ -16,6 +16,10 @@ en:
     custom: "✏️ Custom amount"
     cancel: "❌ Cancel"
 
+  welcome_message: "Welcome to Himera Trading Bot! Here you can trade top tokens safely and quickly."
+  welcome_back_message: "Welcome back!"
+  internal_error: "An internal error occurred. Please try again later."
+
 ru:
   main_menu:
     buy: "💵 Купить"
@@ -33,3 +37,7 @@ ru:
     pct_100: "100%"
     custom: "✏️ Своя сумма"
     cancel: "❌ Отмена"
+
+  welcome_message: "Добро пожаловать в Himera Trading Bot! Здесь вы можете безопасно и быстро торговать топ-токенами."
+  welcome_back_message: "С возвращением!"
+  internal_error: "Произошла внутренняя ошибка. Пожалуйста, попробуйте позже."
