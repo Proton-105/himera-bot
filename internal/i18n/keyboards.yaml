@@ -16,6 +16,11 @@ en:
     custom: "✏️ Custom amount"
     cancel: "❌ Cancel"
 
+  pagination:
+    pagination_prev: "◀️ Prev"
+    pagination_next: "Next ▶️"
+    pagination_page: "Page {{.Page}}/{{.Total}}"
+
   welcome_message: "Welcome to Himera Trading Bot! Here you can trade top tokens safely and quickly."
   welcome_back_message: "Welcome back!"
   internal_error: "An internal error occurred. Please try again later."
@@ -37,6 +42,11 @@ ru:
     pct_100: "100%"
     custom: "✏️ Своя сумма"
     cancel: "❌ Отмена"
+
+  pagination:
+    pagination_prev: "◀️ Назад"
+    pagination_next: "Далее ▶️"
+    pagination_page: "Стр. {{.Page}}/{{.Total}}"
 
   welcome_message: "Добро пожаловать в Himera Trading Bot! Здесь вы можете безопасно и быстро торговать топ-токенами."
   welcome_back_message: "С возвращением!"
