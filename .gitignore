@@ -26,3 +26,4 @@ bot
 .cache/
 .gocache/
 .vscode/
+AGENTS_MCP.md

@@ -25,6 +25,8 @@ import (
 	"github.com/Proton-105/himera-bot/internal/ratelimit"
 	"github.com/Proton-105/himera-bot/internal/repository"
 	"github.com/Proton-105/himera-bot/internal/state"
+	"github.com/Proton-105/himera-bot/internal/user"
+	"github.com/Proton-105/himera-bot/internal/usercache"
 	"github.com/Proton-105/himera-bot/pkg/config"
 	"github.com/Proton-105/himera-bot/pkg/logger"
 	"github.com/Proton-105/himera-bot/pkg/metrics"
@@ -97,14 +99,16 @@ func run() int {
 		slog.String("database", cfg.Database.Name),
 	)
 
-	userRepo := repository.NewUserRepository(db, log)
-
 	coreRedisClient, err := redisclient.New(ctx, cfg.Redis.ToClientConfig())
 	if err != nil {
 		log.Error("failed to connect to redis", "error", err)
 		return 0
 	}
 	redisClient := redisclient.NewMetricsClient(coreRedisClient)
+
+	userCache := usercache.NewCache(coreRedisClient.Raw())
+	userRepo := repository.NewUserRepository(db, log, userCache)
+	userService := user.NewService(userRepo, log)
 	shutdownCoordinator.Register("redis-close", func(ctx context.Context) error {
 		if redisClient == nil {
 			return nil
@@ -212,7 +216,7 @@ func run() int {
 		log.Error("redis delete error", "error", err, slog.String("key", "test_key"))
 	}
 
-	tgBot, err := bot.New(*cfg, log, db, fsm, idempotencyManager, rateLimitMw, userRepo)
+	tgBot, err := bot.New(*cfg, log, db, fsm, idempotencyManager, rateLimitMw, userRepo, userService)
 	if err != nil {
 		log.Error("failed to create telegram bot", "error", err)
 		return 0

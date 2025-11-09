@@ -141,118 +141,92 @@ If the step targets a specific module, do not modify unrelated modules unless ab
 
 ---
 
-## 10. MCP usage policy (for Codex / Cursor / MCP-enabled environments)
+## 10. MCP usage policy
 
-If MCP providers are available, the assistant **must prefer MCP tools** over guessing or free-text pseudo-commands.
+### 10.1. Where MCP configuration lives
 
-### 10.1. Available MCP servers (names are exact)
+The assistant **must not guess** where MCP servers come from.
 
-These names correspond to the client configuration (e.g. VS Code `settings.json`):
+- In **editor clients** (Cursor, VS Code agents, etc.):
+  - MCP servers are usually configured in editor settings like:
+    - global: `~/.config/Code/User/settings.json`
+    - workspace: `.vscode/settings.json`
 
-- `filesystem`  
-  – read/write project files; use this to **inspect and modify code, configs, docs** in the repo instead of guessing.
+- In **Codex CLI over SSH** (what you are using on the server):
+  - Editor settings are **ignored**.
+  - MCP configuration comes from a TOML file on the **remote machine**, e.g.:
+    - `~/.codex/config.toml` (or whatever Codex CLI uses as its MCP config).
+  - If Codex reports `unknown MCP server`, the assistant must assume:
+    - either the server is not defined in this TOML,
+    - or the name is misspelled in the prompt.
 
-- `github`  
-  – search and inspect GitHub repositories (including this one) using the configured personal access token; use для:
-  - поиска по истории, коммитам, веткам;
-  - просмотра файлов, которых нет локально.
+For this project, the assistant must assume that **Codex CLI reads MCP servers from the TOML config on the server** and not from VS Code `settings.json`.
 
-- `sequential-thinking`  
-  – planning / chain-of-thought helper.  
-  Использовать для **сложных задач**: сначала построить пошаговый план, потом выполнять шаги.
+### 10.2. How to use MCP (conceptually)
 
-- `context7`  
-  – долговременный контекст (Upstash); использовать для:
-  - хранения важных архитектурных решений,
-  - инвариантов, договорённостей по проекту,
-  - вещей, к которым нужно возвращаться в других микрошагов.
+When MCP servers are available (as defined in the Codex TOML config), the assistant should:
 
-- `web_browsing`  
-  – браузерный MCP; использовать **только если явно нужна внешняя информация**:
-  - документация сторонних API,
-  - статьи, RFC, внешние спецификации.
-
-- Другие MCP (например, `supabase`, `tailwindcss`, `shadcn`, `ref_tools`)  
-  – использовать только если задача **явно** связана с их областью (UI, Tailwind, Supabase и т.п.).
-
-При необходимости дополнительной информации об агентах и MCP см. также `AGENTS_MCP.md` в репозитории.
-
-### 10.2. Обязательный порядок действий с MCP
-
-Перед выполнением любой задачи в этом репозитории ассистент должен:
-
-1. **Прочитать `PROJECT_RULES.md`.**
-2. При необходимости — прочитать `AGENTS_MCP.md`.
-3. Для сложной/многошаговой задачи:
-   - вызвать `sequential-thinking` и построить план (микрошаги, какие файлы и как меняем);
-4. Для работы с кодом/доками:
-   - использовать `filesystem` для чтения/записи файлов, а не выдумывать структуру из головы;
-5. Если нужна история или поиск по репо:
-   - использовать `github` MCP, а не полагаться на предположения;
-6. Если решение/инвариант важно помнить дальше:
-   - сохранить его через `context7` и ссылаться на него в следующих шагах;
-7. Внешние документы/API:
-   - использовать `web_browsing` только когда локальной информации (код/доки репозитория) недостаточно.
-
-### 10.3. Общие MCP-правила
-
-- **Plan, then execute.**
-  - First: show a short **PLAN** (what files will be written, what commands run).
-  - Then: use MCP tools to actually perform those actions.
-- Prefer safe options:
-  - use `--check` / `--diff` / dry-run when available (linters, formatters, migrations).
-- No destructive commands (e.g. `rm -rf`, dropping databases, deleting large directories)  
-  unless the user explicitly asks for them in the current step.
-
-### 10.4. Files via MCP
-
-When modifying a file using MCP filesystem tools:
-
-- Always write the **full new content** of the file.
-- Ensure the content follows all rules in this document.
-- Do not leave placeholders like `// TODO` unless explicitly requested.
-
-### 10.5. Commands via MCP shell
-
-When running commands with shell MCP:
-
-- Use only the commands that are relevant for build/test/lint/run/devops tasks:
+- Use **filesystem-like MCP** to read and write real project files  
+  instead of inventing their contents.
+- Use **shell-like MCP** to run real commands:
   - `go build ./cmd/bot`
   - `go test ./...`
   - `golangci-lint run ./...`
-  - `docker compose up -d`
-  - миграции БД и т.п.
+  - `pre-commit run --all-files`
+- Use any **planning / context MCP** (if configured) to:
+  - build a short plan for complex micro-steps;
+  - store/reuse long-term project decisions.
+- Use any **web / HTTP MCP** only when:
+  - local code and docs in the repo are not enough;
+  - you explicitly need external documentation.
+
+The exact server names and arguments are taken from the TOML MCP config;  
+the assistant must not hard-code or assume them in this file.
+
+### 10.3. MCP workflow per micro-step
+
+For each micro-step in this repository, when MCP is available:
+
+1. **Read rules first**
+   - Read `PROJECT_RULES.md`.
+   - Read `AGENTS_MCP.md` if the user mentions agents/MCP directly.
+
+2. **Plan**
+   - Produce a short `PLAN:` (2–7 bullets):
+     - which files will be created/overwritten;
+     - which commands will be run;
+     - which MCP categories will be used (filesystem/shell/etc.).
+
+3. **Execute via MCP**
+   - Use filesystem-style MCP to:
+     - read current file content;
+     - write full new file content (no partial patches).
+   - Use shell-style MCP to:
+     - run build/test/lint commands given by the user.
+
+4. **Report**
+   - Show updated file contents in full (or only relevant ones, if there are many).
+   - Show command outputs (build/test/lint), especially on failures.
+
+### 10.4. Safety rules for MCP
+
+- No destructive commands (`rm -rf`, dropping DBs, deleting large directories)  
+  unless the user explicitly requests them **in this micro-step**.
 - If a command fails:
-  - show the exact error output;
-  - explain the cause if possible;
-  - propose a minimal fix;
-  - only then suggest re-running the command.
+  - show the exact error;
+  - briefly explain what it means;
+  - suggest a minimal, safe fix.
 
-### 10.6. Example MCP interaction format
+---
 
-When describing actions to take:
-
-```text
-PLAN:
-- Overwrite: internal/bot/commands.go
-- Overwrite: internal/bot/router.go
-- Run: go fmt ./...
-- Run: go build ./cmd/bot
-
-EXECUTION (via MCP/Fs/Shell):
-- filesystem: write internal/bot/commands.go (full content)
-- filesystem: write internal/bot/router.go (full content)
-- shell: go fmt ./...
-- shell: go build ./cmd/bot
- 
 ## 11. Priority of rules
 
 If these rules conflict with an explicit instruction from the user in the current request,  
 the current user instruction takes priority — **unless** it directly violates:
 
-- security/secrets rules (section 4 and 9);
+- security/secrets rules (sections 4 and 9);
 - data safety (no destructive commands without explicit consent);
-- obviously dangerous behavior (удаление кода/данных без подтверждения).
+- obviously dangerous behavior (deleting code/data without confirmation).
 
 In such cases, explain the conflict to the user and propose a safer alternative.  
 Otherwise, follow the user’s current instruction and keep changes within the scope of the active micro-step.
